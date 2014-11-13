@@ -31,7 +31,7 @@ save
 end module dimensions
 
 program main
-!==================================================
+!===========================================
 ! 3.MAIN
 !  solves a system of ODEs resulting from the 2-dimensional space
 !  discretization of the system of reaction-diffusion equations for the cadherin model
@@ -52,7 +52,7 @@ program main
 !  provide an external function RADIUS, giving
 !  the spectral radius of the Jacobian matrix.
 
-!--------------------------------------------------------
+!===========================================
   use parametres
   use dimensions
   implicit none
@@ -127,12 +127,12 @@ program main
 end program main
 
 function radius ( )
-!--------------------------------------------------------
+!===========================================
 ! 4.RADIUS gives an estimation of the spectral
 !   radius of the Jacobian matrix of the problem.
 !   This is a bound for the whole interval and
 !   thus RADIUS is called once.
-!--------------------------------------------------------
+!===========================================
   use parametres
   use dimensions
   implicit none
@@ -143,10 +143,10 @@ function radius ( )
 end function radius
 
 subroutine fcadhe (n,t,vec,dvec)
-!--------------------------------------------------------
+!===========================================
 ! 5.FCADHE compute the value of
 !   dvec(x,y)=(du(x,y),dv(x,y)).
-!--------------------------------------------------------
+!===========================================
   use parametres
   use dimensions
   implicit none
@@ -270,9 +270,9 @@ subroutine fcadhe (n,t,vec,dvec)
 end subroutine fcadhe
 
 subroutine init (m,vec)
-!==================================================
+!===========================================
 ! 6.INIT computes the initial condition
-!==================================================
+!===========================================
   use parametres
   use dimensions
   implicit none
@@ -333,9 +333,9 @@ subroutine init (m,vec)
 end subroutine init
 
 subroutine out (t,m,vec)
-!==================================================
+!===========================================
 ! 7.OUT writes t,x,y,u(x,y),v(x,y) in the file with label 16
-!==================================================
+!===========================================
   use parametres
   use dimensions
   implicit none
@@ -363,8 +363,9 @@ subroutine out (t,m,vec)
         write(16,"(5(f9.4,x))") t,x,y,u,v
         if (v < 0) then
           write(*,*) 'Attention'
-          write(*,*) x,y,v
-          write(*,*) 'est un endroit ou v est negatif'
+          write(*,*) x,y
+          write(*,*) 'est un endroit ou v est negatif et vaut'
+          write(*,*) v
         else
         end if
       end do
@@ -373,9 +374,9 @@ subroutine out (t,m,vec)
 end subroutine out
 
 subroutine param
-!==================================================
+!===========================================
 ! 8.PARAM reads parameters from a data file
-!==================================================
+!===========================================
   use parametres
   use dimensions
   implicit none
@@ -408,9 +409,9 @@ subroutine param
 end subroutine param
 
 subroutine sys (n)
-!==================================================
+!===========================================
 ! 9.SYS makes the systematic computations
-!==================================================
+!===========================================
   use parametres
   use dimensions
   implicit none
@@ -434,9 +435,9 @@ subroutine sys (n)
 end subroutine sys
 
 subroutine init_random_seed ( )
-!======================================================================
+!===========================================
 ! 10.INIT_RANDOM_SEED initializes a pseudo-random number sequence
-!======================================================================
+!===========================================
   implicit none
 ! Data dictionary: declare local variable types & definitions
   integer :: i, n, clock
