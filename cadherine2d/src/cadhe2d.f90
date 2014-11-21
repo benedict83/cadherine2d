@@ -156,7 +156,7 @@ subroutine fcadhe (n,t,vec,dvec)
   real ( kind = double ), dimension(n), intent(in) :: vec
   real ( kind = double ), dimension(n), intent(out) :: dvec
 ! Data dictionary: declare local variable types & definitions
-  integer :: i,ix,iy,k
+  integer :: i,ix,iy,j,k
   integer :: denom
   real ( kind = double ) :: uleft,vleft,uright,vright,ulow,vlow,uup,vup
   real ( kind = double ) :: uij,vij
@@ -232,19 +232,19 @@ subroutine fcadhe (n,t,vec,dvec)
     ix=i-(iy-1)*nsd
     xlaouonest=(ix-1)/(ans-1)
     ylaouonest=(iy-1)/(ans-1)
-    do k=1,nsd
-      xlaouonconvole=(k-1)/(ans-1)
+    do j=1,nsd
+      xlaouonconvole=(j-1)/(ans-1)
 !! en cas de periodic boundary conditions il faut s'assurer de bien prendre la bonne distance
       distanceenx=min(abs(xlaouonest-xlaouonconvole),abs(xlaouonest-xlaouonconvole-1),abs(xlaouonest-xlaouonconvole+1))
-      do l=1,nsd
-        ylaouonconvole=(l-1)/(ans-1)
+      do k=1,nsd
+        ylaouonconvole=(k-1)/(ans-1)
 !! en cas de periodic boundary conditions il faut s'assurer de bien prendre la bonne distance
         distanceeny=min(abs(ylaouonest-ylaouonconvole),abs(ylaouonest-ylaouonconvole-1),abs(ylaouonest-ylaouonconvole+1))
         if (((distanceenx**2 +distanceeny**2)**(0.5d0)) <= l1) then
-          somme=somme-vec((l-1)*nsd+k+nssq)
+          somme=somme-vec((k-1)*nsd+j+nssq)
           denom=denom+1
         else if (((distanceenx**2 +distanceeny**2)**(0.5d0)) <= ((2**(0.5d0)-1)*l1)) then
-          somme=somme+vec((l-1)*nsd+k+nssq)
+          somme=somme+vec((k-1)*nsd+j+nssq)
           denom=denom+1
         end if
       end do
@@ -346,30 +346,56 @@ subroutine out (t,m,vec)
 ! Data dictionary: declare local variable types & definitions
   integer :: i,j
   real :: x,y,u,v
+  real :: umin,vmin = 1000
+  real :: umax,vmax = 0
 
 !!  if (npri > 0) then
-! passer deux lignes
-    if (t > 0) then
-!!      write(16,*) ''
-      write(16,*) ''
-    endif
-    write(16,*) '# Time is',t
-    do i=1,nsd
-      x = (i-1)/(real(nsd-1))
-      do j=1,nsd
-        y = (j-1)/(real(nsd-1))
-        u = real(vec((j-1)*nsd+i))
-        v = real(vec((j-1)*nsd+i+nssq))
-        write(16,"(5(f9.4,x))") t,x,y,u,v
-        if (v < 0) then
-          write(*,*) 'Attention'
-          write(*,*) x,y
-          write(*,*) 'est un endroit ou v est negatif et vaut'
-          write(*,*) v
-        else
-        end if
-      end do
+  if (t == 0) then
+! passer une ligne dans la sortie standard
+    write(*,*) ''
+  endif
+  if (t > 0) then
+! passer une ligne dans le fichier
+    write(16,*) ''
+  endif
+  write(16,*) '# Time is',t
+  do i=1,nsd
+    x = (i-1)/(real(nsd-1))
+    do j=1,nsd
+      y = (j-1)/(real(nsd-1))
+      u = real(vec((j-1)*nsd+i))
+      v = real(vec((j-1)*nsd+i+nssq))
+      write(16,"(5(f9.4,x))") t,x,y,u,v
+      if (u < umin) then
+        umin = u
+      end if
+      if (u > umax) then
+        umax = u
+      end if
+      if (v < vmin) then
+        vmin = v
+      end if
+      if (v > vmax) then
+        vmax = v
+      end if
+      if (u < 0) then
+        write(*,*) 'Attention'
+        write(*,*) x,y
+        write(*,*) 'est un endroit ou u est negatif et vaut'
+        write(*,*) u
+      end if
+      if (v < 0) then
+        write(*,*) 'Attention'
+        write(*,*) x,y
+        write(*,*) 'est un endroit ou v est negatif et vaut'
+        write(*,*) v
+      end if
     end do
+  end do
+  write(*,*) 'u est compris entre'
+  write(*,*) umin,umax
+  write(*,*) 'v est compris entre'
+  write(*,*) vmin,vmax
 !!  end if
 end subroutine out
 

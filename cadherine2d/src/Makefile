@@ -1,13 +1,13 @@
 HOME = .
 INCLUDE =
-FC = ifort
+FC = gfortran
 #----------OPTIONS-----------------------------
 # -O2 est le niveau par defaut
-# -O1 -g -traceback est utile pour débugger
+# -O1 -g -fbounds-check est utile pour débugger
 # -O0 supprime toute optimisation
 #----------------------------------------------
 #OPT = -O2
-OPT = -O1 -g -traceback
+OPT = -O1 -g -fbounds-check
 #OPT = -O0
 
 #----------------------------------------------
