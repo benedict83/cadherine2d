@@ -1,6 +1,6 @@
 module parametres
 !===========================================
-! 1.PARAMETRES
+! PARAMETRES
 !===========================================
 implicit none
 save
@@ -9,146 +9,96 @@ save
   character(10) :: nom_fichier_out
   integer, parameter :: double = 8 ! Compiler dependent value
   real ( kind = double ) :: xmin,xmax,tbeg,tend
-  real ( kind = double ) :: rho,eps
+  real ( kind = double ) :: rho,l1,l2,eps
   real ( kind = double ) :: a0,a1
   real ( kind = double ) :: sigma
   real ( kind = double ) :: h1,h2,x0,y0,l
   real ( kind = double ) :: dt,dx
-  real ( kind = double ) :: l1,l2
-  integer :: iinit,ngx,npri,ns
+  integer :: iinit,ns
 end module parametres
 
 module dimensions
 !===========================================
-! 2.DIMENSIONS
+! DIMENSIONS
 !===========================================
 implicit none
 save
+  integer, parameter :: ndim = 2
   integer, parameter :: nsd = 32
-  integer, parameter :: nssq = nsd*nsd
+  integer, parameter :: nssq = nsd**ndim
   integer, parameter :: nsnsm1 = nsd*(nsd-1)
-  integer, parameter :: neqn = nsd*nsd*2
+  integer, parameter :: neqn = 2*(nssq)
 end module dimensions
 
-program main
+module mymod
 !===========================================
-! 3.MAIN
-!  solves a system of ODEs resulting from the 2-dimensional space
-!  discretization of the system of reaction-diffusion equations for the cadherin model
-
-!  u_t = sigma (u_{xx}+u_{yy}) -r(u,v)
-!  v_t = r(u,v)
-
-!  and periodic boundary conditions
-
-!  u(x+1,y,t)=u(x,y,t),  v(x,y+1,t)=v(x,y,t).
-
-!  We discretize the space variables with
-!  x_i=i/(N+1), y_i=i/(N+1) for i=0,1,...,N,
-!  with N=128. We obtain a system of 32768
-!  equations. The spectral radius of the Jacobian
-!  can be estimated with the Gershgorin theorem
-!  (13200 is an estimation for it). Thus we
-!  provide an external function RADIUS, giving
-!  the spectral radius of the Jacobian matrix.
-
+! MYMOD
+!===========================================
+  implicit none
+  private
+  public :: convol
+contains
+function convol (x,y,vec)
+!===========================================
+! CONVOL computes the convolution term
 !===========================================
   use parametres
   use dimensions
   implicit none
-  integer :: k
-  integer :: idid
-  integer, dimension(12) :: iwork
-  real ( kind = double ) :: t0,t1
-  real ( kind = double ), dimension(neqn) :: vec
-  real ( kind = double ) :: rtol,atol
-  real ( kind = double ) :: h
-  real ( kind = double ), dimension(7*neqn) :: work
-!--------------------------------------------------------
-!    Work is of length 7*neqn because the spectral radius
-!    is computed externally (otherwise should be 8*neqn).
-!    If integrating with ROCK2 define work(4*neqn).
-!--------------------------------------------------------
-  external fcadhe
-! parameters
-  call param
-! systematic computations
-  call sys(neqn)
+! Data dictionary: declare calling parameter types & definitions
+  real ( kind = double ), intent(in) :: x,y
+  real ( kind = double ), dimension(neqn), intent(in) :: vec
+  real ( kind = double ) :: convol
+! Data dictionary: declare local variable types & definitions
+  integer :: j,k
+  integer :: denom
+  real ( kind = double ) :: xlaouonconvole,ylaouonconvole
+  real ( kind = double ) :: distanceenx
+  real ( kind = double ) :: distanceeny
+  real ( kind = double ) :: somme
+  real ( kind = double ) :: ans
 
-! condition initiale
-  call init(nssq,vec)
-! premier intervalle de temps
-  t0 = tbeg
-  t1 = tbeg + dt
-! 0-ème sortie
-  call out(t0,neqn,vec)
-! boucle d'integration
-  do k=1,ns
-! ----- required tolerance -----
-    rtol=0.1d0**2
-    atol=rtol
-! ----- initial step size -----
-    h=1.0d-4
-!--------------------------------------------------------
-!   Initialize iwork:
-!    iwork(1)=1  RADIUS returns an upper bound for the spectral radius.
-!    iwork(2)=1  The Jacobian is constant (RADIUS is called once).
-!    iwork(3)=0  Return and solution at t1.
-!    iwork(4)=0  Atol and rtol are scalars.
-!--------------------------------------------------------
-    iwork(1)=1
-    iwork(2)=1
-    iwork(3)=0
-    iwork(4)=0
-    write(*,*) ''
-    write(*,"(1x,a,f5.2,a,f5.2)") 'Integration du systeme de ',t0,' a ',t1
-! ----- to integrate with rock2.f90
-!!    call rock2(neqn,t0,t1,h,vec,fcadhe,atol,rtol,work,iwork,idid)
-    call rock4(neqn,t0,t1,h,vec,fcadhe,atol,rtol,work,iwork,idid)
-! k-ème sortie
-    write(*,*) '...'
-    write(*,"(1x,a,f5.2)") 'Fait, et maintenant le temps est ',t1
-! ----- print statistics -----
-    write(*,*) ''
-!!    write(*,*) '--Solution is tabulated in file ',nom_fichier_out
-    write(*,*) 'The value of IDID is',idid
-    write(*,*) 'Max estimation of the spectral radius=',iwork(11)
-    write(*,*) 'Min estimation of the spectral radius=',iwork(12)
-    write(*,*) 'Max number of stages used=',iwork(10)
-    write(*,*) 'Number of f eval. for the spectr. radius=',iwork(9)
-    write(*,"(1x,a,i4,a,i4,a,i4,a,i3)") 'Number of f evaluations=',iwork(5),' steps=',iwork(6),' accpt=',iwork(7),' rejct=',iwork(8)
-! appeler out pour écrire dans le fichier de sortie
-    call out(t1,neqn,vec)
-! prochain intervalle de temps
-    t0 = t1
-    t1 = t1 + dt
-! fin de boucle
+  ans=nsd      ! necessaire pour faire de nsd un double
+
+  somme=0.d0
+  denom=0
+  do j=1,nsd
+    xlaouonconvole=(j-1)/(ans-1)
+!! en cas de periodic boundary conditions il faut s'assurer de bien prendre la bonne distance
+    distanceenx=min(abs(x-xlaouonconvole),abs(x-xlaouonconvole-1),abs(x-xlaouonconvole+1))
+    do k=1,nsd
+      ylaouonconvole=(k-1)/(ans-1)
+!! en cas de periodic boundary conditions il faut s'assurer de bien prendre la bonne distance
+      distanceeny=min(abs(y-ylaouonconvole),abs(y-ylaouonconvole-1),abs(y-ylaouonconvole+1))
+      if (((distanceenx**2+distanceeny**2)**(0.5d0)) <= l1) then
+        somme=somme-vec((k-1)*nsd+j+nssq)
+        denom=denom+1
+      else if (((distanceenx**2+distanceeny**2)**(0.5d0)) <= ((2**(0.5d0)-1)*l1)) then
+        somme=somme+vec((k-1)*nsd+j+nssq)
+        denom=denom+1
+      end if
+    end do
   end do
-end program main
+  convol=(somme+rho*denom)/(rho*denom)
+end function convol
+end module mymod
 
-function radius ( )
+module mymod2
 !===========================================
-! 4.RADIUS gives an estimation of the spectral
-!   radius of the Jacobian matrix of the problem.
-!   This is a bound for the whole interval and
-!   thus RADIUS is called once.
+! MYMOD2
 !===========================================
-  use parametres
-  use dimensions
   implicit none
-! Data dictionary: declare variable types & definitions
-  real ( kind = double ) :: radius
-
-  radius = 8.0d0*nssq*sigma + 2.d0
-end function radius
-
+  private
+  public :: fcadhe
+contains
 subroutine fcadhe (n,t,vec,dvec)
 !===========================================
-! 5.FCADHE compute the value of
-!   dvec(x,y)=(du(x,y),dv(x,y)).
+! FCADHE compute the value of
+! dvec(x,y)=(du(x,y),dv(x,y)).
 !===========================================
   use parametres
   use dimensions
+  use mymod, only: convol
   implicit none
 ! Data dictionary: declare calling parameter types & definitions
   integer, intent(in) :: n
@@ -156,22 +106,19 @@ subroutine fcadhe (n,t,vec,dvec)
   real ( kind = double ), dimension(n), intent(in) :: vec
   real ( kind = double ), dimension(n), intent(out) :: dvec
 ! Data dictionary: declare local variable types & definitions
-  integer :: i,ix,iy,j,k
-  integer :: denom
-  real ( kind = double ) :: uleft,vleft,uright,vright,ulow,vlow,uup,vup
+  integer :: i,ix,iy
+  real ( kind = double ) :: uleft,vleft,uright,vright
+  real ( kind = double ) :: ulow,vlow,uup,vup
   real ( kind = double ) :: uij,vij
-  real ( kind = double ) :: xlaouonest,ylaouonest
-  real ( kind = double ) :: xlaouonconvole,ylaouonconvole
-  real ( kind = double ) :: distanceenx,distanceeny
-  real ( kind = double ) :: somme
-  real ( kind = double ) :: convol,fixation,liberation
+  real ( kind = double ) :: x,y,termeconvol
+  real ( kind = double ) :: fixation,liberation
   real ( kind = double ) :: reacplus,reacmoins,reac
   real ( kind = double ) :: ans
 
-  ans=nsd      ! ------ necessaire ?
-! ----- big loop -----
+  ans=nsd      ! necessaire pour faire de nsd un double
+! big loop
   do i=1,nssq
-! ----- left neighbour -----
+! left neighbour
     if(mod(i,nsd) == 1)then
 ! periodic boundary condition
       uleft=vec(i+nsd-1)
@@ -183,7 +130,7 @@ subroutine fcadhe (n,t,vec,dvec)
      uleft=vec(i-1)
      vleft=vec(nssq+i-1)
     end if
-! ----- right neighbour -----
+! right neighbour
     if(mod(i,nsd) == 0)then
 ! periodic boundary condition
       uright=vec(i-nsd+1)
@@ -195,7 +142,7 @@ subroutine fcadhe (n,t,vec,dvec)
       uright=vec(i+1)
       vright=vec(nssq+i+1)
     end if
-! ----- lower neighbour -----
+! lower neighbour
     if(i <= nsd)then
 ! periodic boundary condition
       ulow=vec(i+nsnsm1)
@@ -207,7 +154,7 @@ subroutine fcadhe (n,t,vec,dvec)
       ulow=vec(i-nsd)
       vlow=vec(nssq+i-nsd)
     end if
-! ----- upper neighbour -----
+! upper neighbour
     if(i > nsnsm1)then
 ! periodic boundary condition
       uup=vec(i-nsnsm1)
@@ -219,46 +166,27 @@ subroutine fcadhe (n,t,vec,dvec)
       uup=vec(i+nsd)
       vup=vec(nssq+i+nsd)
     end if
-! ----- the derivative -----
+! the derivative
     uij=vec(i)
     vij=vec(i+nssq)
-! ----- partie diffusive -----
+
     dvec(i)=sigma*nssq*(uleft+uright+ulow+uup-4.d0*uij)
     dvec(i+nssq)=0.d0
-! ----- convolution -----
-    somme=0.d0
-    denom=0
+
+! appel a convol
     iy=(i-1)/nsd+1
     ix=i-(iy-1)*nsd
-    xlaouonest=(ix-1)/(ans-1)
-    ylaouonest=(iy-1)/(ans-1)
-    do j=1,nsd
-      xlaouonconvole=(j-1)/(ans-1)
-!! en cas de periodic boundary conditions il faut s'assurer de bien prendre la bonne distance
-      distanceenx=min(abs(xlaouonest-xlaouonconvole),abs(xlaouonest-xlaouonconvole-1),abs(xlaouonest-xlaouonconvole+1))
-      do k=1,nsd
-        ylaouonconvole=(k-1)/(ans-1)
-!! en cas de periodic boundary conditions il faut s'assurer de bien prendre la bonne distance
-        distanceeny=min(abs(ylaouonest-ylaouonconvole),abs(ylaouonest-ylaouonconvole-1),abs(ylaouonest-ylaouonconvole+1))
-        if (((distanceenx**2 +distanceeny**2)**(0.5d0)) <= l1) then
-          somme=somme-vec((k-1)*nsd+j+nssq)
-          denom=denom+1
-        else if (((distanceenx**2 +distanceeny**2)**(0.5d0)) <= ((2**(0.5d0)-1)*l1)) then
-          somme=somme+vec((k-1)*nsd+j+nssq)
-          denom=denom+1
-        end if
-      end do
-    end do
-    convol=(somme+rho*denom)/(rho*denom)
-! ----- reaction -----
-    fixation=max(0.d0,1.d0-convol)
-    liberation=eps*min(1.d0,convol)
+    x=(ix-1)/(ans-1)
+    y=(iy-1)/(ans-1)
+    termeconvol=convol(x,y,vec)
+! reaction 
+    fixation=max(0.d0,1.d0-termeconvol)
+    liberation=eps*min(1.d0,termeconvol)
     reacplus=fixation*uij*(rho-vij)
     reacmoins=-liberation*vij
     reac=reacplus+reacmoins
-! derivee uij_t
+
     dvec(i)=dvec(i) - reac
-! derivee vij_t
     dvec(i+nssq)=dvec(i+nssq) + reac
 !!if (i==1) then
 !!  write(*,*) 'du est',dvec(i)
@@ -268,71 +196,182 @@ subroutine fcadhe (n,t,vec,dvec)
 !!end if
   end do
 end subroutine fcadhe
+end module mymod2
 
-subroutine init (m,vec)
+program main
 !===========================================
-! 6.INIT computes the initial condition
+! MAIN solves a system of ODEs resulting from the 2-dimensional space
+! discretization of the system of reaction-diffusion equations for the cadherin model
+!
+! u_t = sigma (u_{xx}+u_{yy}) -r(u,v)
+! or
+! u_t = sigma u_{xx} -r(u,v)
+! v_t = r(u,v)
+!
+! and periodic boundary conditions.
+!
+! We discretize the space variables with
+! x_i=i/(N+1) for i=0,1,...,nsd
+! or
+! x_i=i/(N+1) and y_i=i/(N+1) for i=0,1,...,nsd.
+! We obtain a system of neqn equations.
+! The spectral radius of the Jacobian can
+! be estimated with the Gershgorin theorem.
+! Thus we provide an external function RADIUS,
+! giving the spectral radius of the Jacobian
+! matrix.
+!===========================================
+  use parametres
+  use dimensions
+  use mymod2, only: fcadhe
+  implicit none
+! Data dictionary: declare local variable types & definitions
+  integer :: k
+  integer :: idid
+  integer, dimension(12) :: iwork
+  real ( kind = double ) :: t0,t1
+  real ( kind = double ), dimension(neqn) :: vec
+  real ( kind = double ) :: rtol,atol
+  real ( kind = double ) :: h
+! If integrating with ROCK2 define work(4*neqn)
+  real ( kind = double ), dimension(7*neqn) :: work ! Work is of length 7neqn because the radius is computed externally (otherwise should be 8neqn)
+
+! parameters
+  call param( )
+! systematic computations
+  call sys( )
+
+! condition initiale
+  call init(vec)
+! premier intervalle de temps
+  t0 = tbeg
+  t1 = tbeg + dt
+! 0-eme sortie
+  write(*,*) ''
+! faire un header pour le paragraphe dans le fichier
+  write(16,*) '# Time is',t0
+! appeler out pour ecrire dans le fichier de sortie
+  call out(t0,vec)
+
+! boucle d'integration
+  do k=1,ns
+! required tolerance
+    rtol=0.1d0**2
+    atol=rtol
+! initial step size
+    h=1.0d-4
+! Initialize iwork:
+    iwork(1)=1  ! RADIUS returns an upper bound for the spectral radius.
+    iwork(2)=1  ! The Jacobian is constant (RADIUS is called once).
+    iwork(3)=0  ! Return and solution at t1.
+    iwork(4)=0  ! Atol and rtol are scalars.
+    write(*,*) ''
+    write(*,"(1x,a,f5.2,a,f5.2)") 'Integration du systeme de ',t0,' a ',t1
+    call rock4(neqn,t0,t1,h,vec,fcadhe,atol,rtol,work,iwork,idid)
+! k-eme sortie
+    write(*,*) '...'
+    write(*,"(1x,a,f5.2)") 'Fait, et maintenant le temps est ',t1
+! print statistics
+    write(*,*) ''
+!!    write(*,*) '--Solution is tabulated in file ',nom_fichier_out
+    write(*,*) 'The value of IDID is',idid
+    write(*,*) 'Max estimation of the spectral radius=',iwork(11)
+    write(*,*) 'Min estimation of the spectral radius=',iwork(12)
+    write(*,*) 'Max number of stages used=',iwork(10)
+    write(*,*) 'Number of f eval. for the spectr. radius=',iwork(9)
+    write(*,"(1x,a,i4,a,i4,a,i4,a,i3)") 'Number of f evaluations=',iwork(5),' steps=',iwork(6),' accpt=',iwork(7),' rejct=',iwork(8)
+! passer une ligne dans le fichier IMPORTANT POUR GNUPLOT
+    write(16,*) ''
+! faire un header pour le paragraphe dans le fichier
+    write(16,*) '# Time is',t1
+! appeler out pour ecrire dans le fichier de sortie
+    call out(t1,vec)
+! prochain intervalle de temps
+    t0 = t1
+    t1 = t1 + dt
+  end do
+end program main
+
+function radius ( )
+!===========================================
+! RADIUS gives an estimation of the spectral
+! radius of the Jacobian matrix of the problem.
+! This is a bound for the whole interval and
+! thus RADIUS is called once.
 !===========================================
   use parametres
   use dimensions
   implicit none
 ! Data dictionary: declare calling parameter types & definitions
-  integer, intent(in) :: m
-  real ( kind = double ), dimension (2*m), intent(out) :: vec
+  real ( kind = double ) :: radius
+
+  radius = 8.0d0*nssq*sigma + 2.d0
+end function radius
+
+subroutine init (vec)
+!===========================================
+! INIT computes the initial condition
+!===========================================
+  use parametres
+  use dimensions
+  implicit none
+! Data dictionary: declare calling parameter types & definitions
+  real ( kind = double ), dimension (neqn), intent(out) :: vec
 ! Data dictionary: declare local variable types & definitions
   integer :: i,ix,iy
   real ( kind = double ) :: x,r
   real ( kind = double ) :: ans
   real ( kind = double ) :: xlaouonest,ylaouonest
 
-  ans=nsd      ! ------ necessaire ?
+  ans=nsd      ! necessaire pour faire de nsd un double
 
   if (iinit == 0) then
 ! read initial condition from file
     open(10,file='fort.10',access='sequential',form ='formatted')
-    do i=1,m
+    do i=1,nssq
       read(10,*) x,vec(i)
     end do
     close(10)
   else if (iinit == 1) then
 ! petit plateau pour g autour de x0, g nulle ailleurs
 
- else if (iinit == 2) then
+  else if (iinit == 2) then
 ! petite bosse pour g autour de x0, g nulle ailleurs
 
   else if (iinit == 3) then
 ! condition initiale aleatoire
     call init_random_seed ( )
-    do i=1,m
+    do i=1,nssq
+! big loop
       call random_number (r)
       vec(i) = 1-h2*r
-      vec(m+i) = h2*r
+      vec(nssq+i) = h2*r
     end do
   else if (iinit == 4) then
 ! gaussienne
-    do i=1,m         ! ----- big loop -----
+! big loop
+    do i=1,nssq
       iy=(i-1)/nsd+1
       ix=i-(iy-1)*nsd
       xlaouonest = (ix-1)/(ans-1)
       ylaouonest = (iy-1)/(ans-1)
       vec(i) = exp(-((xlaouonest-x0)**2+(ylaouonest-y0)**2)/(2.d0*l))
-      vec(m+i) = 0
+      vec(nssq+i) = 0
     end do
   else if (iinit == 5) then
 ! condition initiale aleatoire en une dimension
     call init_random_seed ( )
     do ix=1,nsd
-!!      xlaouonest = (ix-1)/(ans-1)
       call random_number (r)
       do iy=1,nsd
         vec((iy-1)*nsd+ix) = 1-h2*r
-        vec(m+(iy-1)*nsd+ix) = h2*r
+        vec(nssq+(iy-1)*nsd+ix) = h2*r
       end do
     end do
   end if
 end subroutine init
 
-subroutine out (t,m,vec)
+subroutine out (t,vec)
 !===========================================
 ! 7.OUT writes t,x,y,u(x,y),v(x,y) in the file with label 16
 !===========================================
@@ -340,32 +379,21 @@ subroutine out (t,m,vec)
   use dimensions
   implicit none
 ! Data dictionary: declare calling parameter types & definitions
-  integer, intent(in) :: m
   real ( kind = double ), intent(in) :: t
-  real ( kind = double ), dimension(m), intent(in) :: vec
+  real ( kind = double ), dimension(neqn), intent(in) :: vec
 ! Data dictionary: declare local variable types & definitions
   integer :: i,j
   real :: x,y,u,v
   real :: umin,vmin = 1000
   real :: umax,vmax = 0
 
-!!  if (npri > 0) then
-  if (t == 0) then
-! passer une ligne dans la sortie standard
-    write(*,*) ''
-  endif
-  if (t > 0) then
-! passer une ligne dans le fichier
-    write(16,*) ''
-  endif
-  write(16,*) '# Time is',t
   do i=1,nsd
     x = (i-1)/(real(nsd-1))
     do j=1,nsd
       y = (j-1)/(real(nsd-1))
       u = real(vec((j-1)*nsd+i))
       v = real(vec((j-1)*nsd+i+nssq))
-      write(16,"(5(f9.4,x))") t,x,y,u,v
+      write(16,"(5(1f9.4,1x))") t,x,y,u,v
       if (u < umin) then
         umin = u
       end if
@@ -396,10 +424,9 @@ subroutine out (t,m,vec)
   write(*,*) umin,umax
   write(*,*) 'v est compris entre'
   write(*,*) vmin,vmax
-!!  end if
 end subroutine out
 
-subroutine param
+subroutine param ( )
 !===========================================
 ! 8.PARAM reads parameters from a data file
 !===========================================
@@ -418,7 +445,7 @@ subroutine param
 ! Open was ok. Read values.
     read(33,*,iostat=ierror)
     read(33,*,iostat=ierror)
-    read(33,*,iostat=ierror) xmin,xmax,ngx
+    read(33,*,iostat=ierror) xmin,xmax
     read(33,*,iostat=ierror)
     read(33,*,iostat=ierror) tbeg,tend,ns
     read(33,*,iostat=ierror)
@@ -434,30 +461,23 @@ subroutine param
   end if
 end subroutine param
 
-subroutine sys (n)
+subroutine sys ( )
 !===========================================
 ! 9.SYS makes the systematic computations
 !===========================================
   use parametres
   use dimensions
   implicit none
-! Data dictionary: declare calling parameter types & definitions
-  integer, intent(in) :: n
 ! Data dictionary: declare local variable types & definitions
-  real ( kind = double ) :: tiny = 1.d-10
+!!  real ( kind = double ) :: tiny = 1.d-10
 
 ! compute time step
 !!  dt = (tend-tbeg+tiny)/ns
   dt = (tend-tbeg)/ns
 ! compute space step
-  dx = (xmax-xmin)/n
-! compute n print
-!!  npri = (n-1)/(ngx-1)
-  npri = 1
-! open nom_fichier.out if npri>0
-!!  if (npri > 0) then
-    open(16,file=nom_fichier_out,access='sequential',status ='replace',form='formatted')
-!!  end if
+  dx = (xmax-xmin)/neqn
+
+  open(16,file=nom_fichier_out,access='sequential',status ='replace',form='formatted')
 end subroutine sys
 
 subroutine init_random_seed ( )
@@ -471,7 +491,7 @@ subroutine init_random_seed ( )
 
   call random_seed(size = n)
   allocate(seed(n))
-  call system_clock(count=clock)
+  call system_clock(count = clock)
   seed = clock + 37 * (/ (i - 1, i = 1, n) /)
   call random_seed(put = seed)
   deallocate(seed)

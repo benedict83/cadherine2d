@@ -17,8 +17,6 @@
 !    parabolic PDEs.
 
 
-
-
 !    Author: A. Abdulle
 !            Universite de Geneve, Dept. de mathematiques
 !            Ch-1211 Geneve 24, Switzerland
@@ -69,7 +67,6 @@
 !                 inhomogeneous boundary conditions in homogeneous ones
 !                 (by adding the appropriate function to the right-hand side)
 !                 may increase the performance of the code.
-
 
 
 !     ATOL(*) :   Absolute and relative error tolerances
