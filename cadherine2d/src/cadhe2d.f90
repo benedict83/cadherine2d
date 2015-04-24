@@ -3,7 +3,6 @@ module parametres
 ! PARAMETRES
 !===========================================
 implicit none
-save
   character(6) :: nom_fichier
   character(12) :: nom_fichier_param
   character(10) :: nom_fichier_out
@@ -22,7 +21,6 @@ module dimensions
 ! DIMENSIONS
 !===========================================
 implicit none
-save
   integer, parameter :: ndim = 2
   integer, parameter :: nsd = 32
   integer, parameter :: nssq = nsd**ndim
@@ -66,18 +64,29 @@ function convol (x,y,vec)
     xlaouonconvole=(j-1)/(ans-1)
 !! en cas de periodic boundary conditions il faut s'assurer de bien prendre la bonne distance
     distanceenx=min(abs(x-xlaouonconvole),abs(x-xlaouonconvole-1),abs(x-xlaouonconvole+1))
-    do k=1,nsd
-      ylaouonconvole=(k-1)/(ans-1)
-!! en cas de periodic boundary conditions il faut s'assurer de bien prendre la bonne distance
-      distanceeny=min(abs(y-ylaouonconvole),abs(y-ylaouonconvole-1),abs(y-ylaouonconvole+1))
-      if (((distanceenx**2+distanceeny**2)**(0.5d0)) <= l1) then
-        somme=somme-vec((k-1)*nsd+j+nssq)
+! partie dependante de la dimension
+    if(ndim == 2)then
+      do k=1,nsd
+        ylaouonconvole=(k-1)/(ans-1)
+  !! en cas de periodic boundary conditions il faut s'assurer de bien prendre la bonne distance
+        distanceeny=min(abs(y-ylaouonconvole),abs(y-ylaouonconvole-1),abs(y-ylaouonconvole+1))
+        if (((distanceenx**2+distanceeny**2)**(0.5d0)) <= l1) then
+          somme=somme-vec((k-1)*nsd+j+nssq)
+          denom=denom+1
+        else if (((distanceenx**2+distanceeny**2)**(0.5d0)) <= ((2**(0.5d0)-1)*l1)) then
+          somme=somme+vec((k-1)*nsd+j+nssq)
+          denom=denom+1
+        end if
+      end do
+    else
+      if (distanceenx <= l1) then
+        somme=somme-vec(j+nssq)
         denom=denom+1
-      else if (((distanceenx**2+distanceeny**2)**(0.5d0)) <= ((2**(0.5d0)-1)*l1)) then
-        somme=somme+vec((k-1)*nsd+j+nssq)
+      else if (distanceenx <= (2.d0*l1)) then
+        somme=somme+vec(j+nssq)
         denom=denom+1
       end if
-    end do
+    end if
   end do
   convol=(somme+rho*denom)/(rho*denom)
 end function convol
@@ -94,7 +103,7 @@ contains
 subroutine fcadhe (n,t,vec,dvec)
 !===========================================
 ! FCADHE compute the value of
-! dvec(x,y)=(du(x,y),dv(x,y)).
+! dvec=(du,dv)
 !===========================================
   use parametres
   use dimensions
@@ -142,37 +151,44 @@ subroutine fcadhe (n,t,vec,dvec)
       uright=vec(i+1)
       vright=vec(nssq+i+1)
     end if
-! lower neighbour
-    if(i <= nsd)then
-! periodic boundary condition
-      ulow=vec(i+nsnsm1)
-      vlow=vec(nssq+i+nsnsm1)
-! Neumann homogeneous boundary condition
-!!      ulow=vec(i+nsd)
-!!      vlow=vec(nssq+i+nsd)
-    else
-      ulow=vec(i-nsd)
-      vlow=vec(nssq+i-nsd)
-    end if
-! upper neighbour
-    if(i > nsnsm1)then
-! periodic boundary condition
-      uup=vec(i-nsnsm1)
-      vup=vec(nssq+i-nsnsm1)
-! Neumann homogeneous boundary condition
-!!      uup=vec(i-nsd)
-!!      vup=vec(nssq+i-nsd)
-    else
-      uup=vec(i+nsd)
-      vup=vec(nssq+i+nsd)
+! partie dependante de la dimension
+    if(ndim == 2)then
+  ! lower neighbour
+      if(i <= nsd)then
+  ! periodic boundary condition
+        ulow=vec(i+nsnsm1)
+        vlow=vec(nssq+i+nsnsm1)
+  ! Neumann homogeneous boundary condition
+  !!      ulow=vec(i+nsd)
+  !!      vlow=vec(nssq+i+nsd)
+      else
+        ulow=vec(i-nsd)
+        vlow=vec(nssq+i-nsd)
+      end if
+  ! upper neighbour
+      if(i > nsnsm1)then
+  ! periodic boundary condition
+        uup=vec(i-nsnsm1)
+        vup=vec(nssq+i-nsnsm1)
+  ! Neumann homogeneous boundary condition
+  !!      uup=vec(i-nsd)
+  !!      vup=vec(nssq+i-nsd)
+      else
+        uup=vec(i+nsd)
+        vup=vec(nssq+i+nsd)
+      end if
     end if
 ! the derivative
     uij=vec(i)
     vij=vec(i+nssq)
-
-    dvec(i)=sigma*nssq*(uleft+uright+ulow+uup-4.d0*uij)
-    dvec(i+nssq)=0.d0
-
+! partie dependante de la dimension
+    if(ndim == 2)then
+      dvec(i)=sigma*nssq*(uleft+uright+ulow+uup-4.d0*uij)
+      dvec(nssq+i)=0.d0
+    else
+      dvec(i)=sigma*nssq*(uleft+uright-2.d0*uij)
+      dvec(nssq+i)=0.d0
+    end if
 ! appel a convol
     iy=(i-1)/nsd+1
     ix=i-(iy-1)*nsd
@@ -188,7 +204,7 @@ subroutine fcadhe (n,t,vec,dvec)
 
     dvec(i)=dvec(i) - reac
     dvec(i+nssq)=dvec(i+nssq) + reac
-!!if (i==1) then
+!!if (i == 1) then
 !!  write(*,*) 'du est',dvec(i)
 !!  write(*,*) 'dv est',dvec(i+nssq)
 !!  write(*,*) 'Le temps est',t0
@@ -233,7 +249,7 @@ program main
   real ( kind = double ), dimension(neqn) :: vec
   real ( kind = double ) :: rtol,atol
   real ( kind = double ) :: h
-! If integrating with ROCK2 define work(4*neqn)
+! If integrating with ROCK2 define work of length 4neqn
   real ( kind = double ), dimension(7*neqn) :: work ! Work is of length 7neqn because the radius is computed externally (otherwise should be 8neqn)
 
 ! parameters
@@ -341,8 +357,8 @@ subroutine init (vec)
   else if (iinit == 3) then
 ! condition initiale aleatoire
     call init_random_seed ( )
-    do i=1,nssq
 ! big loop
+    do i=1,nssq
       call random_number (r)
       vec(i) = 1-h2*r
       vec(nssq+i) = h2*r
