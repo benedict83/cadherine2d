@@ -38,7 +38,7 @@ program exemple
   if (i.ne.0) then
     write( *, * ) "There was a problem with integration: code ", i 
   else
-    write( *, "(1x,a,f10.7,a,f10.7,a,i3,a)" ) "Result",result," +/-",error," from",neval," evaluations"
+    write( *, "(1x,a,f10.7,a,f10.7,a,i3,a)" ) "Result ", result, " +/-", error, " from", neval, " evaluations"
     write( *, * ) "Result =", result
   end if
 ! Ausgabe:

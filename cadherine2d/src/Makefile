@@ -10,11 +10,15 @@ LDFLAGS = -L$(MACPORTS)/lib -lgsl -lgslcblas
 
 #----------OPTIONS-----------------------------
 # -O2 est le niveau par defaut
-# -O1 -g -fbounds-check est utile pour débugger
+# utile pour le developpement :
+#      -f        Fortran Language Options
+#      -g 
+#      -pedantic Error and Warning Options
+#      -W        Error and Warning Options
 # -O0 supprime toute optimisation
 #----------------------------------------------
 #OPT = -O2
-OPT = -O1 -g -fbounds-check -Wall -Wextra -Wconversion -pedantic
+OPT = -fPIC -fmax-errors=1 -fcheck=all -fbacktrace -g -pedantic -Wall -Wconversion -Wextra -Wimplicit-interface 
 #OPT = -O0
 
 PROGRAMS = exemple
