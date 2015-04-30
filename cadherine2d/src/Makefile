@@ -32,6 +32,7 @@ exemple:
 #	$(FC) $(OPT) exemple.f90 $(LDFLAGS) $(LDLIBS) $(FCFLAGS)
 
 cadhe2d: $(INCLUDE) cadhe2d.f90 rock4.o
+#	$(FC) $(OPT) cadhe2d.f90 rock4.o -o cadhe2d
 	$(FC) $(OPT) cadhe2d.f90 rock4.o -o ../exe/cadhe2d
 #cadhe2d: $(INCLUDE) cadhe2d.f90 rock4.o
 #	$(FC) -Wl,--allow-multiple-definition $(OPT)

@@ -30,6 +30,7 @@ module parametres
   real ( dp ) :: sigma
   real ( dp ) :: h1,h2,x0,y0,l
   real ( dp ) :: dx,dy,dt
+  real ( dp ) :: oodx2
   integer ( int32 ) :: iinit,ns
 end module parametres
 
@@ -39,11 +40,10 @@ module dimensions
 !===========================================
   use prec
   implicit none
-  integer ( int32 ), parameter :: ndim = 1
-  integer ( int32 ), parameter :: nsd = 49
-  integer ( int32 ), parameter :: nssq = nsd**ndim
-  integer ( int32 ), parameter :: nsnsm1 = nsd*(nsd-1)
-  integer ( int32 ), parameter :: neqn = 2*(nssq)
+  integer ( int32 ), parameter :: ndim = 2
+  integer ( int32 ), parameter :: nip = 9             ! Number of interior points
+  integer ( int32 ), parameter :: nup = (nip+2)**ndim ! Number of unknown points
+  integer ( int32 ), parameter :: neqn = 2*nup
 end module dimensions
 
 module mymod
@@ -107,23 +107,33 @@ function convol (x,y,vec)
   implicit none
 ! Data dictionary: declare calling parameter types & definitions
   real ( dp ), intent(in) :: x,y
-  real ( dp ), dimension(neqn), intent(in) :: vec
+  real ( dp ), dimension(0:neqn-1), intent(in) :: vec
   real ( dp ) :: convol
 ! Data dictionary: declare local variable types & definitions
-  integer ( int32 ) :: ix
-  real ( dp ) :: ans
+  integer ( int32 ) :: ix,iy
+  real ( dp ) :: position_x
   real ( dp ) :: termephi
 
-  ans = real(nsd)      ! necessaire pour faire de nsd un dp
-
+! partie dependante de la dimension
+  if(ndim == 2)then
   termephi = phi (x,y)
-  convol = 0.5_dp * vec(nssq+1) * termephi
-  do ix=1,nsd
-    termephi= phi (x-ix/ans,y)
-    convol = convol + vec(nssq+ix) * termephi
+  convol = 0.25_dp * vec(nup) * termephi * dx * dy
+  do ix=1,nip
+    position_x = x-ix*dx
+    termephi = phi (position_x,y)
+    convol = convol + 0.5_dp * vec(nup+ix) * termephi * dx * dy
+      do iy=1,nip
+        termephi = phi (position_x,y-iy*dy)
+        convol = convol + vec(nup+iy*(nip+2)+ix) * termephi * dx * dy
+      end do
+    termephi = phi (position_x,y-1.0_dp)
+    convol = convol + 0.5_dp * vec(nup+(nip+1)*(nip+2)+ix) * termephi * dx * dy
   end do
-  termephi= phi (x-1,y)
-  convol = convol + 0.5_dp * vec(nssq+nsd) * termephi
+  termephi = phi (x-1.0_dp,y)
+  convol = convol + 0.25_dp * vec(nup+nip+1) * termephi * dx * dy
+  else
+! dimension 1
+  end if
 
 end function convol
 end module mymod2
@@ -147,109 +157,89 @@ subroutine fcadhe (n,t,vec,dvec)
   use mymod2, only: convol
   implicit none
 ! Data dictionary: declare calling parameter types & definitions
-  integer ( int32 ), intent(in) :: n
+  integer ( int32 ), intent(in) :: n     ! Moralement n == neqn
   real ( dp ), intent(in) :: t
-  real ( dp ), dimension(n), intent(in) :: vec
-  real ( dp ), dimension(n), intent(out) :: dvec
+  real ( dp ), dimension(0:n-1), intent(in) :: vec
+  real ( dp ), dimension(0:n-1), intent(out) :: dvec
 ! Data dictionary: declare local variable types & definitions
   integer ( int32 ) :: i,ix,iy
   real ( dp ) :: uleft,vleft,uright,vright
   real ( dp ) :: ulow,vlow,uup,vup
-  real ( dp ) :: uij,vij
+  real ( dp ) :: ui,vi
   real ( dp ) :: x,y,termeconvol
   real ( dp ) :: fixation,liberation
   real ( dp ) :: reacplus,reacmoins,reac
-  real ( dp ) :: ans
 
-  ans = real(nsd)      ! necessaire pour faire de nsd un dp
 ! big loop
-  do i=1,nssq
+  do i=0,nup-1
 ! left neighbour
-    if(mod(i,nsd) == 1)then
-! periodic boundary condition
-!!      uleft=vec(i+nsd-1)
-!!      vleft=vec(nssq+i+nsd-1)
+    if(mod(i,nip+2) == 0)then
 ! Neumann homogeneous boundary condition
       uleft=vec(i+1)
-      vleft=vec(nssq+i+1)
+      vleft=vec(nup+i+1)
     else
      uleft=vec(i-1)
-     vleft=vec(nssq+i-1)
+     vleft=vec(nup+i-1)
     end if
 ! right neighbour
-    if(mod(i,nsd) == 0)then
-! periodic boundary condition
-!!      uright=vec(i-nsd+1)
-!!      vright=vec(nssq+i-nsd+1)
+    if(mod(i,nip+2) == nip+1)then
 ! Neumann homogeneous boundary condition
       uright=vec(i-1)
-      vright=vec(nssq+i-1)
+      vright=vec(nup+i-1)
     else
       uright=vec(i+1)
-      vright=vec(nssq+i+1)
+      vright=vec(nup+i+1)
     end if
 ! partie dependante de la dimension
     if(ndim == 2)then
   ! lower neighbour
-      if(i <= nsd)then
-  ! periodic boundary condition
-!!        ulow=vec(i+nsnsm1)
-!!        vlow=vec(nssq+i+nsnsm1)
+      if(i <= nip+1)then
   ! Neumann homogeneous boundary condition
-        ulow=vec(i+nsd)
-        vlow=vec(nssq+i+nsd)
+        ulow=vec(i+nip+2)
+        vlow=vec(nup+i+nip+2)
       else
-        ulow=vec(i-nsd)
-        vlow=vec(nssq+i-nsd)
+        ulow=vec(i-nip-2)
+        vlow=vec(nup+i-nip-2)
       end if
   ! upper neighbour
-      if(i > nsnsm1)then
-  ! periodic boundary condition
-!!        uup=vec(i-nsnsm1)
-!!        vup=vec(nssq+i-nsnsm1)
+      if(i >= (nip+1)*(nip+2))then
   ! Neumann homogeneous boundary condition
-        uup=vec(i-nsd)
-        vup=vec(nssq+i-nsd)
+        uup=vec(i-nip-2)
+        vup=vec(nup+i-nip-2)
       else
-        uup=vec(i+nsd)
-        vup=vec(nssq+i+nsd)
+        uup=vec(i+nip+2)
+        vup=vec(nup+i+nip+2)
       end if
     else
 ! dimension 1
     end if
 ! the derivative
-    uij=vec(i)
-    vij=vec(i+nssq)
+    ui=vec(i)
+    vi=vec(nup+i)
 ! partie dependante de la dimension
     if(ndim == 2)then
-      dvec(i)=sigma*nssq*(uleft+uright+ulow+uup-4.0_dp*uij)
-      dvec(nssq+i)=0.0_dp
+      dvec(i)=sigma*oodx2*(uleft+uright+ulow+uup-4.0_dp*ui)
+      dvec(nup+i)=0.0_dp
     else
 ! dimension 1
-      dvec(i)=sigma*nssq*(uleft+uright-2.0_dp*uij)
-      dvec(nssq+i)=0.0_dp
+      dvec(i)=sigma*oodx2*(uleft+uright-2.0_dp*ui)
+      dvec(nup+i)=0.0_dp
     end if
 ! appel a convol
-    iy=(i-1)/nsd+1
-    ix=i-(iy-1)*nsd
-    x=ix*dx
-    y=iy*dy
+    iy = i/(nip+2)
+    ix = mod(i,nip+2)
+    x = ix*dx
+    y = iy*dy
     termeconvol=convol(x,y,vec)
+    fixation = min(1.0_dp,(max(0.0_dp,1.0_dp-termeconvol)))
+    liberation = eps * (1 - fixation)
 ! reaction 
-    fixation=max(0.0_dp,1.0_dp-termeconvol)
-    liberation=eps*min(1.0_dp,termeconvol)
-    reacplus=fixation*uij*(rho-vij)
-    reacmoins=-liberation*vij
-    reac=reacplus+reacmoins
+    reacplus = fixation * ui * (rho-vi)
+    reacmoins = - liberation * vi
+    reac = reacplus + reacmoins
 
-    dvec(i)=dvec(i) - reac
-    dvec(i+nssq)=dvec(i+nssq) + reac
-!!if (i == 1) then
-!!  write(stdout,*) 'du est',dvec(i)
-!!  write(stdout,*) 'dv est',dvec(i+nssq)
-!!  write(stdout,*) 'Le temps est',t0
-!!else
-!!end if
+    dvec(i) = dvec(i) - reac
+    dvec(nup+i) = dvec(nup+i) + reac
   end do
 end subroutine fcadhe
 end module mymod3
@@ -267,9 +257,9 @@ program main
 ! and periodic boundary conditions
 !
 ! We discretize the space variables with
-! x_i=i/(nsd+1) for i=1,...,nsd
+! x_i=i/(nip+1) for i=1,...,nip
 ! or
-! x_i=i/(nsd+1) and y_i=i/(nsd+1) for i=1,...,nsd
+! x_i=i/(nip+1) and y_i=i/(nip+1) for i=1,...,nip
 ! We obtain a system of neqn equations
 ! The spectral radius of the Jacobian can
 ! be estimated with the Gershgorin theorem
@@ -288,7 +278,7 @@ program main
   integer ( int32 ) :: idid
   integer ( int32 ), dimension(12) :: iwork
   real ( dp ) :: t0,t1
-  real ( dp ), dimension(neqn) :: vec
+  real ( dp ), dimension(0:neqn-1) :: vec
   real ( dp ) :: rtol,atol
   real ( dp ) :: h
 ! If integrating with ROCK2 define work of length 4neqn
@@ -325,21 +315,26 @@ program main
     iwork(3)=0  ! Return and solution at t1
     iwork(4)=0  ! Atol and rtol are scalars
     write(stdout,*) ''
-    write(*,"(1x,a,f5.2,a,f5.2)") 'Integration du systeme de ',t0,' a ',t1
+    write(stdout,"(1x,a,f7.2,a,f7.2)") 'Integration du systeme de ',t0,' a ',t1
     call rock4 (neqn,t0,t1,h,vec,fcadhe,atol,rtol,work,iwork,idid)
 ! k-eme sortie
     write(stdout,*) '...'
-    write(*,"(1x,a,f5.2)") 'Fait, et maintenant le temps est ',t1
+    write(stdout,"(1x,a,f7.2)") 'Fait, et maintenant le temps est ',t1
 ! print statistics
     write(stdout,*) ''
 !!    write(stdout,*) '--Solution is tabulated in file ',nom_fichier_out
+    write(stdout,*) 'The value of dt is',dt
+    write(stdout,*) 'The value of dx is',dx
+    write(stdout,*) 'The value of oodx2 is',oodx2
     write(stdout,*) 'The value of IDID is',idid
     write(stdout,*) 'Max estimation of the spectral radius=',iwork(11)
     write(stdout,*) 'Min estimation of the spectral radius=',iwork(12)
     write(stdout,*) 'Max number of stages used=',iwork(10)
     write(stdout,*) 'Number of f evaluations for the spectral radius=',iwork(9)
-    write(*,"(1x,a,i4,a,i4,a,i4,a,i3)") 'Number of f evaluations=',iwork(5),' steps=',iwork(6),' accpt=',iwork(7),' rejct=',iwork(8)
-! passer une ligne dans le fichier IMPORTANT POUR GNUPLOT
+    write(stdout,"(1x,a,i4,a,i4,a,i4,a,i3)") 'Number of f evaluations=', &
+                                             iwork(5),' steps=',iwork(6),' accpt=',iwork(7),' rejct=',iwork(8)
+! passer deux lignes dans le fichier IMPORTANT POUR GNUPLOT
+    write(u_out,*) ''
     write(u_out,*) ''
 ! faire un header pour le paragraphe dans le fichier
     write(u_out,*) '# Time is',t1
@@ -365,7 +360,7 @@ function radius ( )
 ! Data dictionary: declare calling parameter types & definitions
   real ( dp ) :: radius
 
-  radius = 8.0_dp*nssq*sigma + 2.0_dp
+  radius = 8.0_dp*nup*sigma + 2.0_dp
 end function radius
 
 subroutine init (vec)
@@ -377,21 +372,18 @@ subroutine init (vec)
   use dimensions
   implicit none
 ! Data dictionary: declare calling parameter types & definitions
-  real ( dp ), dimension (neqn), intent(out) :: vec
+  real ( dp ), dimension (0:neqn-1), intent(out) :: vec
 ! Data dictionary: declare local variable types & definitions
   integer ( int32 ) :: i,ix,iy
   integer ( int32 ) :: u
   real ( dp ) :: x,r
-  real ( dp ) :: ans
   real ( dp ) :: xlaouonest,ylaouonest
-
-  ans = real(nsd)      ! necessaire pour faire de nsd un dp
 
   if (iinit == 0) then
 ! read initial condition from file
 !!    open(newunit=u,file="fort.10",access="sequential",form ="formatted",status="old")
     open(newunit=u,file="fort.10",status="old")
-    do i=1,nssq
+    do i=0,nup-1
       read(u,*) x,vec(i)
     end do
     close(u)
@@ -405,30 +397,30 @@ subroutine init (vec)
 ! condition initiale aleatoire
     call init_random_seed ( )
 ! big loop
-    do i=1,nssq
+    do i=0,nup-1
       call random_number (r)
       vec(i) = 1-h2*r
-      vec(nssq+i) = h2*r
+      vec(nup+i) = h2*r
     end do
   else if (iinit == 4) then
 ! gaussienne
 ! big loop
-    do i=1,nssq
-      iy=(i-1)/nsd+1
-      ix=i-(iy-1)*nsd
-      xlaouonest = (ix-1)/(ans-1)
-      ylaouonest = (iy-1)/(ans-1)
+    do i=0,nup-1
+      iy=(i-1)/nip+1
+      ix=i-(iy-1)*nip
+      xlaouonest = ix*dx
+      ylaouonest = iy*dy
       vec(i) = exp(-((xlaouonest-x0)**2+(ylaouonest-y0)**2)/(2.0_dp*l))
-      vec(nssq+i) = 0
+      vec(nup+i) = 0
     end do
   else if (iinit == 5) then
 ! condition initiale aleatoire en une dimension
     call init_random_seed ( )
-    do ix=1,nsd
+    do ix=0,nip+1
       call random_number (r)
-      do iy=1,nsd
-        vec((iy-1)*nsd+ix) = 1-h2*r
-        vec(nssq+(iy-1)*nsd+ix) = h2*r
+      do iy=0,nip+1
+        vec(iy*(nip+2)+ix) = 1-h2*r
+        vec(nup+iy*(nip+2)+ix) = h2*r
       end do
     end do
   end if
@@ -436,7 +428,7 @@ end subroutine init
 
 subroutine out (t,vec)
 !===========================================
-! 7.OUT writes t,x,y,u(x,y),v(x,y) in the file with label u
+! 7.OUT writes t,x,y,u(x,y),v(x,y) in the file with label u_out
 !===========================================
   use prec
   use parametres
@@ -444,21 +436,21 @@ subroutine out (t,vec)
   implicit none
 ! Data dictionary: declare calling parameter types & definitions
   real ( dp ), intent(in) :: t
-  real ( dp ), dimension(neqn), intent(in) :: vec
+  real ( dp ), dimension(0:neqn-1), intent(in) :: vec
 ! Data dictionary: declare local variable types & definitions
   integer ( int32 ) :: ix,iy
   real ( dp ) :: x,y,u,v
   real ( dp ) :: umin,vmin = 1000
   real ( dp ) :: umax,vmax = 0
 
-  do ix=1,nsd
+  do ix=0,nip+1
     x = ix*dx
 ! partie dependante de la dimension
     if (ndim == 2) then
-      do iy=1,nsd
+      do iy=0,nip+1
         y = iy*dy
-        u = real(vec((iy-1)*nsd+ix))
-        v = real(vec(nssq+(iy-1)*nsd+ix))
+        u = real(vec(iy*(nip+2)+ix))
+        v = real(vec(nup+iy*(nip+2)+ix))
         write(u_out,"(5(1f9.4,1x))") t,x,y,u,v
         if (u < umin) then
           umin = u
@@ -472,13 +464,13 @@ subroutine out (t,vec)
         if (v > vmax) then
           vmax = v
         end if
-        if (u < 0) then
+        if (u < - 1.0e-3_dp) then
           write(stdout,*) 'Attention'
           write(stdout,*) x,y
           write(stdout,*) 'est un endroit ou u est negatif et vaut'
           write(stdout,*) u
         end if
-        if (v < 0) then
+        if (v < - 1.0e-3_dp) then
           write(stdout,*) 'Attention'
           write(stdout,*) x,y
           write(stdout,*) 'est un endroit ou v est negatif et vaut'
@@ -489,7 +481,7 @@ subroutine out (t,vec)
 ! dimension 1
       y = 0
       u = real(vec(ix))
-      v = real(vec(nssq+ix))
+      v = real(vec(nup+ix))
       write(u_out,"(5(1f9.4,1x))") t,x,y,u,v
     end if
   end do
@@ -511,8 +503,8 @@ subroutine param ( )
   integer ( int32 ) :: ierror
   integer ( int32 ) :: u
 
-  write(*,"(1x,a)",advance='no') 'nom du run (6 caracteres) ? '
-  read (*,"(a6)") nom_fichier
+  write(stdout,"(1x,a)",advance='no') 'nom du run (6 caracteres) ? '
+  read (stdin,"(a6)") nom_fichier
   nom_fichier_param =  nom_fichier//'.param'
   nom_fichier_out =  nom_fichier//'.out'
   open(newunit=u,file=nom_fichier_param,status="old",form="formatted",action="read",iostat=ierror)
@@ -551,8 +543,10 @@ subroutine sys ( )
 !!  dt = (tend-tbeg+tiny)/ns
   dt = (tend-tbeg)/ns
 ! compute space step
-  dx = (xmax-xmin)/(nsd+1)
-  dy = (ymax-ymin)/(nsd+1)
+  dx = (xmax-xmin)/(nip+1)
+  dy = (ymax-ymin)/(nip+1)
+! compute useful quantities
+  oodx2 = 1.0_dp/(dx*dx)
 
 end subroutine sys
 
