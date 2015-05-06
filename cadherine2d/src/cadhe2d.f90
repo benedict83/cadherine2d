@@ -41,7 +41,7 @@ module dimensions
   use prec
   implicit none
   integer ( int32 ), parameter :: ndim = 2
-  integer ( int32 ), parameter :: nip = 9             ! Number of interior points
+  integer ( int32 ), parameter :: nip = 19            ! Number of interior points
   integer ( int32 ), parameter :: nup = (nip+2)**ndim ! Number of unknown points
   integer ( int32 ), parameter :: neqn = 2*nup
 end module dimensions
@@ -71,7 +71,7 @@ function phi (x,y)
 
 ! partie dependante de la dimension
   if (ndim == 2) then
-    l3 = (2.0_dp**(0.5_dp)-1.0_dp)*l1
+    l3 = (2.0_dp**(0.5_dp))*l1
     distance = (x**2+y**2)**(0.5_dp)
   else
 ! dimension 1
@@ -81,10 +81,11 @@ function phi (x,y)
   if (distance > l3) then
     phi = 0
   else if (distance > l1) then
-    phi = 1
+    phi = -1
   else
     phi = -1
   end if
+!!  write(stdout,*) l3,distance,phi
 end function phi
 end module mymod
 
@@ -111,26 +112,52 @@ function convol (x,y,vec)
   real ( dp ) :: convol
 ! Data dictionary: declare local variable types & definitions
   integer ( int32 ) :: ix,iy
-  real ( dp ) :: position_x
+  real ( dp ) :: position_x,position_y
   real ( dp ) :: termephi
 
 ! partie dependante de la dimension
   if(ndim == 2)then
-  termephi = phi (x,y)
+! bord droit
+  position_x = x
+  position_y = y
+  termephi = phi (position_x,position_y)
   convol = 0.25_dp * vec(nup) * termephi * dx * dy
+  do iy=1,nip
+    position_y = y-iy*dy
+    termephi = phi (position_x,position_y)
+    convol = convol + 0.5_dp * vec(nup+iy*(nip+2)) * termephi * dx * dy
+  end do
+  position_y = y-1.0_dp
+  termephi = phi (position_x,position_y)
+  convol = convol + 0.25_dp * vec(nup+(nip+1)*(nip+2)) * termephi * dx * dy
+! interieur
   do ix=1,nip
     position_x = x-ix*dx
-    termephi = phi (position_x,y)
+    position_y = y
+    termephi = phi (position_x,position_y)
     convol = convol + 0.5_dp * vec(nup+ix) * termephi * dx * dy
-      do iy=1,nip
-        termephi = phi (position_x,y-iy*dy)
-        convol = convol + vec(nup+iy*(nip+2)+ix) * termephi * dx * dy
-      end do
-    termephi = phi (position_x,y-1.0_dp)
+    do iy=1,nip
+      position_y = y-iy*dy
+      termephi = phi (position_x,position_y)
+      convol = convol + vec(nup+iy*(nip+2)+ix) * termephi * dx * dy
+    end do
+    position_y = y-1.0_dp
+    termephi = phi (position_x,position_y)
     convol = convol + 0.5_dp * vec(nup+(nip+1)*(nip+2)+ix) * termephi * dx * dy
   end do
-  termephi = phi (x-1.0_dp,y)
+! bord gauche
+  position_x = x-1.0_dp
+  position_y = y
+  termephi = phi (position_x,position_y)
   convol = convol + 0.25_dp * vec(nup+nip+1) * termephi * dx * dy
+  do iy=1,nip
+    position_y = y-iy*dy
+    termephi = phi (position_x,position_y)
+    convol = convol + 0.5_dp * vec(nup+iy*(nip+2)+nip+1) * termephi * dx * dy
+  end do
+  position_y = y-1.0_dp
+  termephi = phi (position_x,position_y)
+  convol = convol + 0.25_dp * vec(nup+(nip+1)*(nip+2)+nip+1) * termephi * dx * dy
   else
 ! dimension 1
   end if
@@ -226,8 +253,8 @@ subroutine fcadhe (n,t,vec,dvec)
       dvec(nup+i)=0.0_dp
     end if
 ! appel a convol
-    iy = i/(nip+2)
     ix = mod(i,nip+2)
+    iy = i/(nip+2)
     x = ix*dx
     y = iy*dy
     termeconvol=convol(x,y,vec)
@@ -235,7 +262,7 @@ subroutine fcadhe (n,t,vec,dvec)
     liberation = eps * (1 - fixation)
 ! reaction 
     reacplus = fixation * ui * (rho-vi)
-    reacmoins = - liberation * vi
+    reacmoins = -1.0_dp * liberation * vi
     reac = reacplus + reacmoins
 
     dvec(i) = dvec(i) - reac
@@ -323,9 +350,9 @@ program main
 ! print statistics
     write(stdout,*) ''
 !!    write(stdout,*) '--Solution is tabulated in file ',nom_fichier_out
-    write(stdout,*) 'The value of dt is',dt
-    write(stdout,*) 'The value of dx is',dx
-    write(stdout,*) 'The value of oodx2 is',oodx2
+!!    write(stdout,*) 'The value of dt is',dt
+!!    write(stdout,*) 'The value of dx is',dx
+!!    write(stdout,*) 'The value of oodx2 is',oodx2
     write(stdout,*) 'The value of IDID is',idid
     write(stdout,*) 'Max estimation of the spectral radius=',iwork(11)
     write(stdout,*) 'Min estimation of the spectral radius=',iwork(12)
@@ -378,6 +405,7 @@ subroutine init (vec)
   integer ( int32 ) :: u
   real ( dp ) :: x,r
   real ( dp ) :: xlaouonest,ylaouonest
+  real ( dp ) :: gauss
 
   if (iinit == 0) then
 ! read initial condition from file
@@ -388,11 +416,21 @@ subroutine init (vec)
     end do
     close(u)
   else if (iinit == 1) then
-! petit plateau pour g autour de x0, g nulle ailleurs
+! petit plateau pour v autour de x0,y0, v nulle ailleurs
 
   else if (iinit == 2) then
-! petite bosse pour g autour de x0, g nulle ailleurs
-
+! petite bosse pour v autour de x0,y0, v nulle ailleurs
+! big loop
+    do i=0,nup-1
+      ix = mod(i,nip+2)
+      iy = i/(nip+2)
+      xlaouonest = ix*dx
+      ylaouonest = iy*dy
+      gauss = h2 * exp(-((xlaouonest-x0)**2+(ylaouonest-y0)**2)/(2.0_dp*l))
+      vec(i) = 1.0_dp - gauss
+      vec(nup+i) = gauss
+!!      write(stdout,*) ix,iy,xlaouonest,ylaouonest,gauss
+    end do
   else if (iinit == 3) then
 ! condition initiale aleatoire
     call init_random_seed ( )
@@ -403,17 +441,6 @@ subroutine init (vec)
       vec(nup+i) = h2*r
     end do
   else if (iinit == 4) then
-! gaussienne
-! big loop
-    do i=0,nup-1
-      iy=(i-1)/nip+1
-      ix=i-(iy-1)*nip
-      xlaouonest = ix*dx
-      ylaouonest = iy*dy
-      vec(i) = exp(-((xlaouonest-x0)**2+(ylaouonest-y0)**2)/(2.0_dp*l))
-      vec(nup+i) = 0
-    end do
-  else if (iinit == 5) then
 ! condition initiale aleatoire en une dimension
     call init_random_seed ( )
     do ix=0,nip+1
