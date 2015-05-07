@@ -2,9 +2,10 @@ module prec
 !===========================================
 ! PREC
 !===========================================
-  use, intrinsic :: iso_fortran_env, only: int32, int64, sp => real32, dp => real64, &
-                                           stdin => input_unit, &
-                                           stdout => output_unit, &
+  use, intrinsic :: iso_fortran_env, only: int32                , int64,        &
+                                           sp => real32         , dp => real64, &
+                                           stdin => input_unit  ,               &
+                                           stdout => output_unit,               &
                                            stderr => error_unit
   implicit none
   private
@@ -12,42 +13,66 @@ module prec
   public :: stdin, stdout, stderr
 end module prec
 
-module parametres
-!===========================================
-! PARAMETRES
-!===========================================
-  use prec
-  implicit none
-  character(6) :: nom_fichier
-  character(12) :: nom_fichier_param
-  character(10) :: nom_fichier_out
-  integer ( int32 ) :: u_out
-  real ( dp ) :: xmin,xmax
-  real ( dp ) :: ymin,ymax
-  real ( dp ) :: tbeg,tend
-  real ( dp ) :: rho,l1,l2,eps
-  real ( dp ) :: a0,a1
-  real ( dp ) :: sigma
-  real ( dp ) :: h1,h2,x0,y0,l
-  real ( dp ) :: dx,dy,dt
-  real ( dp ) :: oodx2
-  integer ( int32 ) :: ndim
-  integer ( int32 ) :: ns
-  integer ( int32 ) :: iinit
-end module parametres
-
 module dimensions
 !===========================================
-! DIMENSIONS
+! DIMENSIONS AND PARAMETERS
 !===========================================
   use prec
   implicit none
   integer ( int32 ), parameter :: nip = 19            ! Number of interior points
   integer ( int32 ) :: nup                            ! Number of unknown points
   integer ( int32 ) :: neqn                           ! Number of equations
+  character(6)      :: nom_fichier
+  character(12)     :: nom_fichier_param
+  character(10)     :: nom_fichier_out
+  integer ( int32 ) :: u_out
+  real ( dp )       :: xmin,xmax
+  real ( dp )       :: ymin,ymax
+  real ( dp )       :: tbeg,tend
+  real ( dp )       :: rho,l1,l2,eps
+  real ( dp )       :: a0,a1
+  real ( dp )       :: sigma
+  real ( dp )       :: h1,h2,x0,y0,l
+  real ( dp )       :: dx,dy,dt
+  real ( dp )       :: oodx2
+  integer ( int32 ) :: ndim
+  integer ( int32 ) :: ns
+  integer ( int32 ) :: iinit
 contains
+subroutine param ( )
+!===========================================
+! PARAM reads parameters from a data file
+!===========================================
+  implicit none
+! Data dictionary: declare local variable types & definitions
+  integer ( int32 ) :: ierror
+  integer ( int32 ) :: u_param
+
+  write (stdout,"(1x,a)",advance='no') 'nom du run (6 caracteres) ? '
+  read (stdin,"(a6)") nom_fichier
+  nom_fichier_param =  nom_fichier//'.param'
+  nom_fichier_out   =  nom_fichier//'.out'
+  open (newunit=u_param,file=nom_fichier_param,status="old",form="formatted",action="read",iostat=ierror)
+  if (ierror == 0) then
+! Open was ok, read values
+    read (u_param,*,iostat=ierror)
+    read (u_param,*,iostat=ierror)
+    read (u_param,*,iostat=ierror) ndim,xmin,xmax,ymin,ymax
+    read (u_param,*,iostat=ierror)
+    read (u_param,*,iostat=ierror) tbeg,tend,ns
+    read (u_param,*,iostat=ierror)
+    read (u_param,*,iostat=ierror)
+    read (u_param,*,iostat=ierror) rho,l1,l2,eps
+    read (u_param,*,iostat=ierror)
+    read (u_param,*,iostat=ierror)
+    read (u_param,*,iostat=ierror) sigma
+    read (u_param,*,iostat=ierror)
+    read (u_param,*,iostat=ierror)
+    read (u_param,*,iostat=ierror) iinit,h1,h2,x0,y0,l
+    close (u_param)
+  end if
+end subroutine param
 subroutine calc_neqn ( )
-  use parametres
   implicit none
 
   nup = (nip+2)**ndim
@@ -68,22 +93,21 @@ function phi (x,y)
 ! PHI computes the kernel phi
 !===========================================
   use prec
-  use parametres
   use dimensions
   implicit none
 ! Data dictionary: declare calling parameter types & definitions
-  real ( dp ), intent(in) :: x,y
+  !!real ( dp ), intent(in) :: x,y
+  real ( dp ) :: x,y
   real ( dp ) :: phi
 ! Data dictionary: declare local variable types & definitions
   real ( dp ) :: module
 
-! partie dependante de la dimension
-  if (ndim == 2) then
+  select case (ndim)
+  case (2)
     module = (x**2+y**2)**(0.5_dp)
-  else
-! dimension 1
+  case (1)
     module = abs(x)
-  end if
+  end select
 
   phi = - l1 * exp(-(module/l2)**2) + l2 * exp(-(module/l1)**2)
 
@@ -104,7 +128,6 @@ function convol (x,y,vec)
 ! CONVOL computes the convolution term
 !===========================================
   use prec
-  use parametres
   use dimensions
   use mod_phi, only: phi
   implicit none
@@ -117,64 +140,63 @@ function convol (x,y,vec)
   real ( dp ) :: position_x,position_y
   real ( dp ) :: termephi
 
-! partie dependante de la dimension
-  if(ndim == 2)then
+  select case (ndim)
+  case (2)
 ! bord gauche i.e. {0}*[0,1]
-  position_x = x
-  position_y = y
-  termephi = phi (position_x,position_y)
-  convol = 0.25_dp * vec(nup) * termephi * dx * dy
-  do iy=1,nip
+    position_x = x
+    position_y = y
+    termephi = phi (position_x,position_y)
+    convol = 0.25_dp * vec(nup) * termephi * dx * dy
+    yloop_gauche: do iy = 1, nip
+      position_y = position_y-dy
+      termephi = phi (position_x,position_y)
+      convol = convol + 0.5_dp * vec(nup+iy*(nip+2)) * termephi * dx * dy
+    end do yloop_gauche
     position_y = position_y-dy
     termephi = phi (position_x,position_y)
-    convol = convol + 0.5_dp * vec(nup+iy*(nip+2)) * termephi * dx * dy
-  end do
-  position_y = position_y-dy
-  termephi = phi (position_x,position_y)
-  convol = convol + 0.25_dp * vec(nup+(nip+1)*(nip+2)) * termephi * dx * dy
+    convol = convol + 0.25_dp * vec(nup+(nip+1)*(nip+2)) * termephi * dx * dy
 ! interieur i.e. ]0,1[*[0,1]
-  do ix=1,nip
+    xloop_2d: do ix = 1, nip
+      position_x = position_x-dx
+      position_y = y
+      termephi = phi (position_x,position_y)
+      convol = convol + 0.5_dp * vec(nup+ix) * termephi * dx * dy
+      yloop_interieur: do iy = 1, nip
+        position_y = position_y-dy
+        termephi = phi (position_x,position_y)
+        convol = convol + vec(nup+iy*(nip+2)+ix) * termephi * dx * dy
+      end do yloop_interieur
+      position_y = position_y-dy
+      termephi = phi (position_x,position_y)
+      convol = convol + 0.5_dp * vec(nup+(nip+1)*(nip+2)+ix) * termephi * dx * dy
+    end do xloop_2d
+! bord droit i.e. {1}*[0,1]
     position_x = position_x-dx
     position_y = y
     termephi = phi (position_x,position_y)
-    convol = convol + 0.5_dp * vec(nup+ix) * termephi * dx * dy
-    do iy=1,nip
+    convol = convol + 0.25_dp * vec(nup+nip+1) * termephi * dx * dy
+    yloop_droit: do iy = 1, nip
       position_y = position_y-dy
       termephi = phi (position_x,position_y)
-      convol = convol + vec(nup+iy*(nip+2)+ix) * termephi * dx * dy
-    end do
+      convol = convol + 0.5_dp * vec(nup+iy*(nip+2)+nip+1) * termephi * dx * dy
+    end do yloop_droit
     position_y = position_y-dy
     termephi = phi (position_x,position_y)
-    convol = convol + 0.5_dp * vec(nup+(nip+1)*(nip+2)+ix) * termephi * dx * dy
-  end do
-! bord droit i.e. {1}*[0,1]
-  position_x = position_x-dx
-  position_y = y
-  termephi = phi (position_x,position_y)
-  convol = convol + 0.25_dp * vec(nup+nip+1) * termephi * dx * dy
-  do iy=1,nip
-    position_y = position_y-dy
+    convol = convol + 0.25_dp * vec(nup+(nip+1)*(nip+2)+nip+1) * termephi * dx * dy
+  case (1)
+    position_x = x
+    position_y = 0.0_dp ! peu importe
     termephi = phi (position_x,position_y)
-    convol = convol + 0.5_dp * vec(nup+iy*(nip+2)+nip+1) * termephi * dx * dy
-  end do
-  position_y = position_y-dy
-  termephi = phi (position_x,position_y)
-  convol = convol + 0.25_dp * vec(nup+(nip+1)*(nip+2)+nip+1) * termephi * dx * dy
-  else
-! dimension 1
-  position_x = x
-  position_y = 0.0_dp ! peu importe
-  termephi = phi (position_x,position_y)
-  convol = 0.5_dp * vec(nup) * termephi * dx
-  do ix=1,nip
+    convol = 0.5_dp * vec(nup) * termephi * dx
+    xloop_1d: do ix = 1, nip
+      position_x = position_x-dx
+      termephi = phi (position_x,position_y)
+      convol = convol + vec(nup+ix) * termephi * dx
+    end do xloop_1d
     position_x = position_x-dx
     termephi = phi (position_x,position_y)
-    convol = convol + vec(nup+ix) * termephi * dx
-  end do
-  position_x = position_x-dx
-  termephi = phi (position_x,position_y)
-  convol = convol + 0.5_dp * vec(nup+(nip+1)) * termephi * dx
-  end if
+    convol = convol + 0.5_dp * vec(nup+(nip+1)) * termephi * dx
+  end select
 
 end function convol
 end module mod_convol
@@ -193,15 +215,14 @@ subroutine fcadhe (n,t,vec,dvec)
 ! dvec=(du,dv)
 !===========================================
   use prec
-  use parametres
   use dimensions
   use mod_convol, only: convol
   implicit none
 ! Data dictionary: declare calling parameter types & definitions
   integer ( int32 ), intent(in) :: n     ! Moralement n == neqn
-  real ( dp ), intent(in) :: t
-  real ( dp ), dimension(0:n-1), intent(in) :: vec
-  real ( dp ), dimension(0:n-1), intent(out) :: dvec
+  real ( dp )      , intent(in) :: t
+  real ( dp )      , dimension(0:n-1), intent(in) :: vec
+  real ( dp )      , dimension(0:n-1), intent(out) :: dvec
 ! Data dictionary: declare local variable types & definitions
   integer ( int32 ) :: i,ix,iy
   real ( dp ) :: uleft,vleft,uright,vright
@@ -209,12 +230,11 @@ subroutine fcadhe (n,t,vec,dvec)
   real ( dp ) :: ui,vi
   real ( dp ) :: x,y,termeconvol
   real ( dp ) :: reacplus,reacmoins,reac
-  real ( dp ) :: sert_a_eviter_un_warning
+!!  real ( dp ) :: sert_a_eviter_un_warning
 
-  sert_a_eviter_un_warning = t
+!!  sert_a_eviter_un_warning = t
 
-! big loop
-  do i=0,nup-1
+  bigloop: do i = 0, nup-1
 ! left neighbour
     if(mod(i,nip+2) == 0)then
 ! Neumann homogeneous boundary condition
@@ -233,8 +253,8 @@ subroutine fcadhe (n,t,vec,dvec)
       uright=vec(i+1)
       vright=vec(nup+i+1)
     end if
-! partie dependante de la dimension
-    if(ndim == 2)then
+    select case (ndim)
+    case (2)
   ! lower neighbour
       if(i <= nip+1)then
   ! Neumann homogeneous boundary condition
@@ -253,21 +273,19 @@ subroutine fcadhe (n,t,vec,dvec)
         uup=vec(i+nip+2)
         vup=vec(nup+i+nip+2)
       end if
-    else
-! dimension 1
-    end if
+    case (1)
+    end select
 ! the derivative
     ui=vec(i)
     vi=vec(nup+i)
-! partie dependante de la dimension
-    if(ndim == 2)then
+    select case (ndim)
+    case (2)
       dvec(i)=sigma*oodx2*(uleft+uright+ulow+uup-4.0_dp*ui)
       dvec(nup+i)=0.0_dp
-    else
-! dimension 1
+    case (1)
       dvec(i)=sigma*oodx2*(uleft+uright-2.0_dp*ui)
       dvec(nup+i)=0.0_dp
-    end if
+    end select
 ! appel a convol
     ix = mod(i,nip+2)
     iy = i/(nip+2)
@@ -281,55 +299,9 @@ subroutine fcadhe (n,t,vec,dvec)
 
     dvec(i) = dvec(i) - reac
     dvec(nup+i) = dvec(nup+i) + reac
-  end do
+  end do bigloop
 end subroutine fcadhe
 end module mod_fcadhe
-
-module mod_param
-!===========================================
-! MODULE FOR PARAM
-!===========================================
-  implicit none
-  private
-  public :: param
-contains
-subroutine param ( )
-!===========================================
-! PARAM reads parameters from a data file
-!===========================================
-  use prec
-  use parametres
-  use dimensions
-  implicit none
-! Data dictionary: declare local variable types & definitions
-  integer ( int32 ) :: ierror
-  integer ( int32 ) :: u
-
-  write(stdout,"(1x,a)",advance='no') 'nom du run (6 caracteres) ? '
-  read (stdin,"(a6)") nom_fichier
-  nom_fichier_param =  nom_fichier//'.param'
-  nom_fichier_out =  nom_fichier//'.out'
-  open(newunit=u,file=nom_fichier_param,status="old",form="formatted",action="read",iostat=ierror)
-  if (ierror == 0) then
-! Open was ok, read values
-    read(u,*,iostat=ierror)
-    read(u,*,iostat=ierror)
-    read(u,*,iostat=ierror) ndim,xmin,xmax,ymin,ymax
-    read(u,*,iostat=ierror)
-    read(u,*,iostat=ierror) tbeg,tend,ns
-    read(u,*,iostat=ierror)
-    read(u,*,iostat=ierror)
-    read(u,*,iostat=ierror) rho,l1,l2,eps
-    read(u,*,iostat=ierror)
-    read(u,*,iostat=ierror)
-    read(u,*,iostat=ierror) sigma
-    read(u,*,iostat=ierror)
-    read(u,*,iostat=ierror)
-    read(u,*,iostat=ierror) iinit,h1,h2,x0,y0,l
-    close(u)
-  end if
-end subroutine param
-end module mod_param
 
 module mod_sys
 !===========================================
@@ -344,7 +316,6 @@ subroutine sys ( )
 ! SYS makes the systematic computations
 !===========================================
   use prec
-  use parametres
   use dimensions
   implicit none
 ! Data dictionary: declare local variable types & definitions
@@ -402,7 +373,6 @@ subroutine init (vec)
 ! INIT computes the initial condition
 !===========================================
   use prec
-  use parametres
   use dimensions
   use mod_init_random_seed, only: init_random_seed
   implicit none
@@ -415,21 +385,18 @@ subroutine init (vec)
   real ( dp ) :: xlaouonest,ylaouonest
   real ( dp ) :: gauss
 
-  if (iinit == 0) then
-! read initial condition from file
-!!    open(newunit=u,file="fort.10",access="sequential",form ="formatted",status="old")
-    open(newunit=u,file="fort.10",status="old")
-    do i=0,nup-1
+  select case (iinit)
+  case (0) ! read initial condition from file
+    open(newunit=u,file="fort.10",access="sequential",form ="formatted",status="old")
+    readloop: do i=0,nup-1
       read(u,*) x,vec(i)
-    end do
+    end do readloop
     close(u)
-  else if (iinit == 1) then
-! petit plateau pour v autour de x0,y0, v nulle ailleurs
 
-  else if (iinit == 2) then
-! petite bosse pour v autour de x0,y0, v nulle ailleurs
-! big loop
-    do i=0,nup-1
+  case (1) ! petit plateau pour v autour de x0,y0, v nulle ailleurs
+
+  case (2) ! petite bosse pour v autour de x0,y0, v nulle ailleurs
+    bigloop2: do i=0,nup-1
       ix = mod(i,nip+2)
       iy = i/(nip+2)
       xlaouonest = ix*dx
@@ -438,27 +405,26 @@ subroutine init (vec)
       vec(i) = 1.0_dp - gauss
       vec(nup+i) = gauss
 !!      write(stdout,*) ix,iy,xlaouonest,ylaouonest,gauss
-    end do
-  else if (iinit == 3) then
-! condition initiale aleatoire
+    end do bigloop2
+
+  case (3) ! condition initiale aleatoire
     call init_random_seed ( )
-! big loop
-    do i=0,nup-1
+    bigloop3: do i=0,nup-1
       call random_number (r)
       vec(i) = 1-h2*r
       vec(nup+i) = h2*r
-    end do
-  else if (iinit == 4) then
-! condition initiale aleatoire en une dimension
+    end do bigloop3
+
+  case (4) ! condition initiale aleatoire en une dimension
     call init_random_seed ( )
-    do ix=0,nip+1
+    xloop: do ix=0,nip+1
       call random_number (r)
-      do iy=0,nip+1
+      yloop: do iy=0,nip+1
         vec(iy*(nip+2)+ix) = 1-h2*r
         vec(nup+iy*(nip+2)+ix) = h2*r
-      end do
-    end do
-  end if
+      end do yloop
+    end do xloop
+  end select
 end subroutine init
 end module mod_init
 
@@ -486,15 +452,12 @@ program cadhe2d
 ! matrix
 !===========================================
   use prec
-  use parametres
   use dimensions
   use mod_fcadhe, only: fcadhe
-  use mod_param, only: param
   use mod_sys, only: sys
   use mod_init, only: init
   implicit none
 ! Data dictionary: declare local variable types & definitions
-!!  integer ( int32 ) :: u
   integer ( int32 ) :: k
   integer ( int32 ) :: idid
   integer ( int32 ), dimension(12) :: iwork
@@ -502,7 +465,6 @@ program cadhe2d
   real ( dp ), dimension(:), allocatable :: vec
   real ( dp ) :: rtol,atol
   real ( dp ) :: h
-! If integrating with ROCK2 define work of length 4neqn
   real ( dp ), dimension(:), allocatable :: work
 
 ! parameters
@@ -512,7 +474,9 @@ program cadhe2d
 ! systematic computations
   call sys ( )
   allocate (vec(0:neqn-1))
-  allocate (work(1:7*neqn)) ! Work is of length 7neqn because the radius is computed externally (otherwise should be 8neqn)
+! If integrating with ROCK2 allocate work of length 4*neqn
+  allocate (work(7*neqn)) ! Allocate work of length 7*neqn because the radius is computed externally
+! Otherwise allocate work of length 8*neqn
 
   open(newunit=u_out,file=nom_fichier_out,access="sequential",status ="replace",form="formatted")
 
@@ -529,7 +493,7 @@ program cadhe2d
   call out (t0,vec)
 
 ! boucle d'integration
-  do k=1,ns
+  timeloop: do k=1,ns
 ! required tolerance
     rtol=0.1_dp**2
     atol=rtol
@@ -570,7 +534,7 @@ program cadhe2d
 ! prochain intervalle de temps
     t0 = t1
     t1 = t1 + dt
-  end do
+  end do timeloop
   deallocate(vec)
   deallocate(work)
 end program cadhe2d
@@ -580,24 +544,22 @@ subroutine out (t,vec)
 ! OUT writes t,x,y,u(x,y),v(x,y) in the file with label u_out
 !===========================================
   use prec
-  use parametres
   use dimensions
   implicit none
 ! Data dictionary: declare calling parameter types & definitions
   real ( dp ), intent(in) :: t
   real ( dp ), dimension(0:neqn-1), intent(in) :: vec
 ! Data dictionary: declare local variable types & definitions
-  integer ( int32 ) :: ix,iy
-  real ( dp ) :: x,y,u,v
-  real ( dp ) :: umin,vmin = 1000
-  real ( dp ) :: umax,vmax = 0
+  integer ( int32 ) :: ix               , iy
+  real ( dp )       :: x = 0.0_dp       , y = 0.0_dp
+  real ( dp )       :: u                , v
+  real ( dp )       :: umin = 1000.0_dp , vmin = 1000.0_dp
+  real ( dp )       :: umax = 0.0_dp    , vmax = 0.0_dp
 
-  do ix=0,nip+1
-    x = ix*dx
-! partie dependante de la dimension
-    if (ndim == 2) then
-      do iy=0,nip+1
-        y = iy*dy
+  xloop: do ix = 0,nip+1
+    select case (ndim)
+    case (2)
+      yloop: do iy = 0,nip+1
         u = real(vec(iy*(nip+2)+ix))
         v = real(vec(nup+iy*(nip+2)+ix))
         write(u_out,"(5(1f9.4,1x))") t,x,y,u,v
@@ -625,15 +587,15 @@ subroutine out (t,vec)
           write(stdout,*) 'est un endroit ou v est negatif et vaut'
           write(stdout,*) v
         end if
-      end do
-    else
-! dimension 1
-      y = 0
+        y = y + dy
+      end do yloop
+    case (1)
       u = real(vec(ix))
       v = real(vec(nup+ix))
       write(u_out,"(5(1f9.4,1x))") t,x,y,u,v
-    end if
-  end do
+    end select
+    x = x + dx
+  end do xloop
   write(stdout,*) 'u est compris entre'
   write(stdout,*) umin,umax
   write(stdout,*) 'v est compris entre'
@@ -648,7 +610,6 @@ function radius ( )
 ! thus RADIUS is called once
 !===========================================
   use prec
-  use parametres
   use dimensions
   implicit none
 ! Data dictionary: declare calling parameter types & definitions

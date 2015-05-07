@@ -13,7 +13,7 @@ FC = gfortran
 ## -O0 supprime toute optimisation
 FCFLAGS = -I/usr/include/fgsl -lfgsl
 LDFLAGS = -L/usr/lib -lgsl -lgslcblas
-OPT = -fPIC -fmax-errors=1 -fcheck=all -fbacktrace -g -pedantic -Wall -Wconversion -Wextra -Wimplicit-interface 
+OPT = -fPIC -fmax-errors=1 -fcheck=all -fbacktrace -g -pedantic -Wall -Wextra -Wimplicit-interface 
 
 ## ======================================================================
 ## OBJECTS
@@ -28,9 +28,10 @@ exemple:
 ## General rule for building prog from prog.o
 ## $^ (GNU extension) is used in order to list
 ## additional object files on which the executable depends
+## I added $(OBJECTS) for cadhe2d
 %: $(OBJECTS) %.o
 	$(FC) $(FCFLAGS) $(LDFLAGS) $(OPT) $^ -o $@
-## General rules for building prog.o from prog.f90
+## General rule for building prog.o from prog.f90
 ## $< is used in order to list only the first prerequisite (the source file)
 ## and not the additional prerequisites such as module or include files
 %.o: %.f90
