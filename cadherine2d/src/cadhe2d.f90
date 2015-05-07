@@ -87,7 +87,7 @@ function phi (x,y)
 
   phi = - l1 * exp(-(module/l2)**2) + l2 * exp(-(module/l1)**2)
 
-  write(stdout,*) module,phi
+!!  write(stdout,*) module,phi
 end function phi
 end module mod_phi
 
@@ -208,7 +208,6 @@ subroutine fcadhe (n,t,vec,dvec)
   real ( dp ) :: ulow,vlow,uup,vup
   real ( dp ) :: ui,vi
   real ( dp ) :: x,y,termeconvol
-  real ( dp ) :: fixation,liberation
   real ( dp ) :: reacplus,reacmoins,reac
   real ( dp ) :: sert_a_eviter_un_warning
 
@@ -275,11 +274,9 @@ subroutine fcadhe (n,t,vec,dvec)
     x = ix*dx
     y = iy*dy
     termeconvol=convol(x,y,vec)
-    fixation = min(1.0_dp,(max(0.0_dp,1.0_dp-termeconvol)))
-    liberation = eps * (1 - fixation)
 ! reaction 
-    reacplus = fixation * ui * (rho-vi)
-    reacmoins = -1.0_dp * liberation * vi
+    reacplus = ui * (rho-vi) * (0.5_dp - termeconvol)
+    reacmoins = -eps * vi * (0.5_dp + termeconvol)
     reac = reacplus + reacmoins
 
     dvec(i) = dvec(i) - reac
@@ -510,6 +507,8 @@ program cadhe2d
 
 ! parameters
   call param ( )
+! dimensions
+  call calc_neqn ( )
 ! systematic computations
   call sys ( )
   allocate (vec(0:neqn-1))
@@ -572,6 +571,8 @@ program cadhe2d
     t0 = t1
     t1 = t1 + dt
   end do
+  deallocate(vec)
+  deallocate(work)
 end program cadhe2d
 
 subroutine out (t,vec)
