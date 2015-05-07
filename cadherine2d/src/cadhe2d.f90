@@ -31,7 +31,9 @@ module parametres
   real ( dp ) :: h1,h2,x0,y0,l
   real ( dp ) :: dx,dy,dt
   real ( dp ) :: oodx2
-  integer ( int32 ) :: iinit,ns
+  integer ( int32 ) :: ndim
+  integer ( int32 ) :: ns
+  integer ( int32 ) :: iinit
 end module parametres
 
 module dimensions
@@ -40,10 +42,17 @@ module dimensions
 !===========================================
   use prec
   implicit none
-  integer ( int32 ), parameter :: ndim = 2
   integer ( int32 ), parameter :: nip = 19            ! Number of interior points
-  integer ( int32 ), parameter :: nup = (nip+2)**ndim ! Number of unknown points
-  integer ( int32 ), parameter :: neqn = 2*nup
+  integer ( int32 ) :: nup                            ! Number of unknown points
+  integer ( int32 ) :: neqn                           ! Number of equations
+contains
+subroutine calc_neqn ( )
+  use parametres
+  implicit none
+
+  nup = (nip+2)**ndim
+  neqn = 2*nup
+end subroutine calc_neqn
 end module dimensions
 
 module mymod
@@ -117,49 +126,61 @@ function convol (x,y,vec)
 
 ! partie dependante de la dimension
   if(ndim == 2)then
-! bord droit
+! bord gauche i.e. {0}*[0,1]
   position_x = x
   position_y = y
   termephi = phi (position_x,position_y)
   convol = 0.25_dp * vec(nup) * termephi * dx * dy
   do iy=1,nip
-    position_y = y-iy*dy
+    position_y = position_y-dy
     termephi = phi (position_x,position_y)
     convol = convol + 0.5_dp * vec(nup+iy*(nip+2)) * termephi * dx * dy
   end do
-  position_y = y-1.0_dp
+  position_y = position_y-dy
   termephi = phi (position_x,position_y)
   convol = convol + 0.25_dp * vec(nup+(nip+1)*(nip+2)) * termephi * dx * dy
-! interieur
+! interieur i.e. ]0,1[*[0,1]
   do ix=1,nip
-    position_x = x-ix*dx
+    position_x = position_x-dx
     position_y = y
     termephi = phi (position_x,position_y)
     convol = convol + 0.5_dp * vec(nup+ix) * termephi * dx * dy
     do iy=1,nip
-      position_y = y-iy*dy
+      position_y = position_y-dy
       termephi = phi (position_x,position_y)
       convol = convol + vec(nup+iy*(nip+2)+ix) * termephi * dx * dy
     end do
-    position_y = y-1.0_dp
+    position_y = position_y-dy
     termephi = phi (position_x,position_y)
     convol = convol + 0.5_dp * vec(nup+(nip+1)*(nip+2)+ix) * termephi * dx * dy
   end do
-! bord gauche
-  position_x = x-1.0_dp
+! bord droit i.e. {1}*[0,1]
+  position_x = position_x-dx
   position_y = y
   termephi = phi (position_x,position_y)
   convol = convol + 0.25_dp * vec(nup+nip+1) * termephi * dx * dy
   do iy=1,nip
-    position_y = y-iy*dy
+    position_y = position_y-dy
     termephi = phi (position_x,position_y)
     convol = convol + 0.5_dp * vec(nup+iy*(nip+2)+nip+1) * termephi * dx * dy
   end do
-  position_y = y-1.0_dp
+  position_y = position_y-dy
   termephi = phi (position_x,position_y)
   convol = convol + 0.25_dp * vec(nup+(nip+1)*(nip+2)+nip+1) * termephi * dx * dy
   else
 ! dimension 1
+  position_x = x
+  position_y = 0.0_dp ! peu importe
+  termephi = phi (position_x,position_y)
+  convol = 0.5_dp * vec(nup) * termephi * dx
+  do ix=1,nip
+    position_x = position_x-dx
+    termephi = phi (position_x,position_y)
+    convol = convol + vec(nup+ix) * termephi * dx
+  end do
+  position_x = position_x-dx
+  termephi = phi (position_x,position_y)
+  convol = convol + 0.5_dp * vec(nup+(nip+1)) * termephi * dx
   end if
 
 end function convol
@@ -305,16 +326,19 @@ program main
   integer ( int32 ) :: idid
   integer ( int32 ), dimension(12) :: iwork
   real ( dp ) :: t0,t1
-  real ( dp ), dimension(0:neqn-1) :: vec
+  real ( dp ), dimension(:), allocatable :: vec
   real ( dp ) :: rtol,atol
   real ( dp ) :: h
 ! If integrating with ROCK2 define work of length 4neqn
-  real ( dp ), dimension(7*neqn) :: work ! Work is of length 7neqn because the radius is computed externally (otherwise should be 8neqn)
+  real ( dp ), dimension(:), allocatable :: work
 
 ! parameters
   call param ( )
 ! systematic computations
   call sys ( )
+  allocate (vec(0:neqn-1))
+  allocate (work(1:7*neqn)) ! Work is of length 7neqn because the radius is computed externally (otherwise should be 8neqn)
+
   open(newunit=u_out,file=nom_fichier_out,access="sequential",status ="replace",form="formatted")
 
 ! condition initiale
@@ -539,7 +563,7 @@ subroutine param ( )
 ! Open was ok, read values
     read(u,*,iostat=ierror)
     read(u,*,iostat=ierror)
-    read(u,*,iostat=ierror) xmin,xmax,ymin,ymax
+    read(u,*,iostat=ierror) ndim,xmin,xmax,ymin,ymax
     read(u,*,iostat=ierror)
     read(u,*,iostat=ierror) tbeg,tend,ns
     read(u,*,iostat=ierror)
@@ -594,3 +618,4 @@ subroutine init_random_seed ( )
   call random_seed (put = seed)
   deallocate(seed)
 end subroutine init_random_seed
+
