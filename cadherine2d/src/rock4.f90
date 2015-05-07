@@ -2540,17 +2540,7 @@
             end if
         end if
     end do
-    write(6,*) 'convergence failure in the &
-    spectral radius computation'
+    write(6,*) 'convergence failure in the spectral radius computation'
     idid=-3
     return
     end subroutine rockfrho
-             
-          
-            
-            
-                  
-          
-         
-
-
