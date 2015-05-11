@@ -13,7 +13,7 @@ FC = gfortran
 ## -O0 supprime toute optimisation
 FCFLAGS = -I/usr/include/fgsl -lfgsl
 LDFLAGS = -L/usr/lib -lgsl -lgslcblas
-OPT = -fPIC -fmax-errors=1 -fcheck=all -fbacktrace -g -pedantic -Wall -Wextra -Wimplicit-interface 
+OPT = -fPIC -fmax-errors=1 -fcheck=all -fbacktrace -g -pedantic -Wall -Wextra -Wimplicit-interface
 
 ## ======================================================================
 ## OBJECTS

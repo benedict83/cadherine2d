@@ -11,6 +11,7 @@ module prec
   private
   public :: int32, int64, sp, dp
   public :: stdin, stdout, stderr
+
 end module prec
 
 module dimensions
@@ -29,7 +30,7 @@ module dimensions
   real ( dp )       :: xmin,xmax
   real ( dp )       :: ymin,ymax
   real ( dp )       :: tbeg,tend
-  real ( dp )       :: rho,l1,l2,eps
+  real ( dp )       :: rho,b1,d1,eps
   real ( dp )       :: a0,a1
   real ( dp )       :: sigma
   real ( dp )       :: h1,h2,x0,y0,l
@@ -38,7 +39,9 @@ module dimensions
   integer ( int32 ) :: ndim
   integer ( int32 ) :: ns
   integer ( int32 ) :: iinit
+
 contains
+
 subroutine param ( )
 !===========================================
 ! PARAM reads parameters from a data file
@@ -62,7 +65,8 @@ subroutine param ( )
     read (u_param,*,iostat=ierror) tbeg,tend,ns
     read (u_param,*,iostat=ierror)
     read (u_param,*,iostat=ierror)
-    read (u_param,*,iostat=ierror) rho,l1,l2,eps
+    read (u_param,*,iostat=ierror)
+    read (u_param,*,iostat=ierror) rho,b1,d1,eps
     read (u_param,*,iostat=ierror)
     read (u_param,*,iostat=ierror)
     read (u_param,*,iostat=ierror) sigma
@@ -72,12 +76,14 @@ subroutine param ( )
     close (u_param)
   end if
 end subroutine param
+
 subroutine calc_neqn ( )
   implicit none
 
   nup = (nip+2)**ndim
   neqn = 2*nup
 end subroutine calc_neqn
+
 end module dimensions
 
 module mod_phi
@@ -87,7 +93,9 @@ module mod_phi
   implicit none
   private
   public :: phi
+
 contains
+
 function phi (x,y)
 !===========================================
 ! PHI computes the kernel phi
@@ -96,8 +104,7 @@ function phi (x,y)
   use dimensions
   implicit none
 ! Data dictionary: declare calling parameter types & definitions
-  !!real ( dp ), intent(in) :: x,y
-  real ( dp ) :: x,y
+  real ( dp ), intent(in) :: x,y
   real ( dp ) :: phi
 ! Data dictionary: declare local variable types & definitions
   real ( dp ) :: module
@@ -109,10 +116,11 @@ function phi (x,y)
     module = abs(x)
   end select
 
-  phi = - l1 * exp(-(module/l2)**2) + l2 * exp(-(module/l1)**2)
+  phi = - b1 * exp(-(module/d1)**2) + d1 * exp(-(module/b1)**2)
 
 !!  write(stdout,*) module,phi
 end function phi
+
 end module mod_phi
 
 module mod_convol
@@ -122,7 +130,9 @@ module mod_convol
   implicit none
   private
   public :: convol
+
 contains
+
 function convol (x,y,vec)
 !===========================================
 ! CONVOL computes the convolution term
@@ -199,6 +209,7 @@ function convol (x,y,vec)
   end select
 
 end function convol
+
 end module mod_convol
 
 module mod_fcadhe
@@ -208,7 +219,9 @@ module mod_fcadhe
   implicit none
   private
   public :: fcadhe
+
 contains
+
 subroutine fcadhe (n,t,vec,dvec)
 !===========================================
 ! FCADHE compute the value of
@@ -225,8 +238,8 @@ subroutine fcadhe (n,t,vec,dvec)
   real ( dp )      , dimension(0:n-1), intent(out) :: dvec
 ! Data dictionary: declare local variable types & definitions
   integer ( int32 ) :: i,ix,iy
-  real ( dp ) :: uleft,vleft,uright,vright
-  real ( dp ) :: ulow,vlow,uup,vup
+  real ( dp ) :: uleft,uright
+  real ( dp ) :: ulow,uup
   real ( dp ) :: ui,vi
   real ( dp ) :: x,y,termeconvol
   real ( dp ) :: reacplus,reacmoins,reac
@@ -237,41 +250,29 @@ subroutine fcadhe (n,t,vec,dvec)
   bigloop: do i = 0, nup-1
 ! left neighbour
     if(mod(i,nip+2) == 0)then
-! Neumann homogeneous boundary condition
       uleft=vec(i+1)
-      vleft=vec(nup+i+1)
     else
      uleft=vec(i-1)
-     vleft=vec(nup+i-1)
     end if
 ! right neighbour
     if(mod(i,nip+2) == nip+1)then
-! Neumann homogeneous boundary condition
       uright=vec(i-1)
-      vright=vec(nup+i-1)
     else
       uright=vec(i+1)
-      vright=vec(nup+i+1)
     end if
     select case (ndim)
     case (2)
   ! lower neighbour
       if(i <= nip+1)then
-  ! Neumann homogeneous boundary condition
         ulow=vec(i+nip+2)
-        vlow=vec(nup+i+nip+2)
       else
         ulow=vec(i-nip-2)
-        vlow=vec(nup+i-nip-2)
       end if
   ! upper neighbour
       if(i >= (nip+1)*(nip+2))then
-  ! Neumann homogeneous boundary condition
         uup=vec(i-nip-2)
-        vup=vec(nup+i-nip-2)
       else
         uup=vec(i+nip+2)
-        vup=vec(nup+i+nip+2)
       end if
     case (1)
     end select
@@ -287,10 +288,10 @@ subroutine fcadhe (n,t,vec,dvec)
       dvec(nup+i)=0.0_dp
     end select
 ! appel a convol
-    ix = mod(i,nip+2)
-    iy = i/(nip+2)
-    x = ix*dx
-    y = iy*dy
+    ix = mod(i,nip+2) ! ces 4 lignes peuvent etre changees
+    iy = i/(nip+2)    ! ces 4 lignes peuvent etre changees
+    x = ix*dx         ! ces 4 lignes peuvent etre changees
+    y = iy*dy         ! ces 4 lignes peuvent etre changees
     termeconvol=convol(x,y,vec)
 ! reaction 
     reacplus = ui * (rho-vi) * (0.5_dp - termeconvol)
@@ -299,8 +300,10 @@ subroutine fcadhe (n,t,vec,dvec)
 
     dvec(i) = dvec(i) - reac
     dvec(nup+i) = dvec(nup+i) + reac
+  write(stdout,*) reac,dvec(i),dvec(nup+i)
   end do bigloop
 end subroutine fcadhe
+
 end module mod_fcadhe
 
 module mod_sys
@@ -310,7 +313,9 @@ module mod_sys
   implicit none
   private
   public :: sys
+
 contains
+
 subroutine sys ( )
 !===========================================
 ! SYS makes the systematic computations
@@ -331,6 +336,7 @@ subroutine sys ( )
   oodx2 = 1.0_dp/(dx*dx)
 
 end subroutine sys
+
 end module mod_sys
 
 module mod_init_random_seed
@@ -340,7 +346,9 @@ module mod_init_random_seed
   implicit none
   private
   public :: init_random_seed
+
 contains
+
 subroutine init_random_seed ( )
 !===========================================
 ! INIT_RANDOM_SEED initializes a pseudo-random number sequence
@@ -358,6 +366,7 @@ subroutine init_random_seed ( )
   call random_seed (put = seed)
   deallocate(seed)
 end subroutine init_random_seed
+
 end module mod_init_random_seed
 
 module mod_init
@@ -367,7 +376,9 @@ module mod_init
   implicit none
   private
   public :: init
+
 contains
+
 subroutine init (vec)
 !===========================================
 ! INIT computes the initial condition
@@ -393,18 +404,21 @@ subroutine init (vec)
     end do readloop
     close(u)
 
-  case (1) ! petit plateau pour v autour de x0,y0, v nulle ailleurs
+  case (1) ! petit plateau pour v autour de (x0,y0), v nulle ailleurs
 
-  case (2) ! petite bosse pour v autour de x0,y0, v nulle ailleurs
+  case (2) ! petite bosse  pour v autour de (x0,y0), v nulle ailleurs
+    xlaouonest = 0.0_dp
+    ylaouonest = 0.0_dp
     bigloop2: do i=0,nup-1
-      ix = mod(i,nip+2)
-      iy = i/(nip+2)
-      xlaouonest = ix*dx
-      ylaouonest = iy*dy
+      if (xlaouonest > xmax) then
+        xlaouonest = xlaouonest - (xmax - xmin)
+        ylaouonest = ylaouonest + dy
+      end if
       gauss = h2 * exp(-((xlaouonest-x0)**2+(ylaouonest-y0)**2)/(2.0_dp*l))
       vec(i) = 1.0_dp - gauss
       vec(nup+i) = gauss
 !!      write(stdout,*) ix,iy,xlaouonest,ylaouonest,gauss
+      xlaouonest = xlaouonest + dx
     end do bigloop2
 
   case (3) ! condition initiale aleatoire
@@ -426,7 +440,85 @@ subroutine init (vec)
     end do xloop
   end select
 end subroutine init
+
 end module mod_init
+
+module mod_out
+!===========================================
+! MODULE FOR OUT
+!===========================================
+  implicit none
+  private
+  public :: out
+
+contains
+
+subroutine out (t,vec)
+!===========================================
+! OUT writes t,x,y,u(x,y),v(x,y) in the file with label u_out
+!===========================================
+  use prec
+  use dimensions
+  implicit none
+! Data dictionary: declare calling parameter types & definitions
+  real ( dp ), intent(in) :: t
+  real ( dp ), dimension(0:neqn-1), intent(in) :: vec
+! Data dictionary: declare local variable types & definitions
+  integer ( int32 ) :: ix               , iy
+  real ( dp )       :: x = 0.0_dp       , y = 0.0_dp
+  real ( dp )       :: u                , v
+  real ( dp )       :: umin = 1000.0_dp , vmin = 1000.0_dp
+  real ( dp )       :: umax = 0.0_dp    , vmax = 0.0_dp
+
+  x = 0.0_dp ! necessaire mais je ne comprends pas encore bien pourquoi
+  y = 0.0_dp ! necessaire mais je ne comprends pas encore bien pourquoi
+  xloop: do ix = 0,nip+1
+    select case (ndim)
+    case (2)
+      yloop: do iy = 0,nip+1
+        u = real(vec(iy*(nip+2)+ix))
+        v = real(vec(nup+iy*(nip+2)+ix))
+        write(u_out,"(5(1f9.4,1x))") t,x,y,u,v
+        if (u < umin) then
+          umin = u
+        end if
+        if (u > umax) then
+          umax = u
+        end if
+        if (v < vmin) then
+          vmin = v
+        end if
+        if (v > vmax) then
+          vmax = v
+        end if
+        if (u < - 1.0e-3_dp) then
+          write(stdout,*) 'Attention'
+          write(stdout,*) x,y
+          write(stdout,*) 'est un endroit ou u est negatif et vaut'
+          write(stdout,*) u
+        end if
+        if (v < - 1.0e-3_dp) then
+          write(stdout,*) 'Attention'
+          write(stdout,*) x,y
+          write(stdout,*) 'est un endroit ou v est negatif et vaut'
+          write(stdout,*) v
+        end if
+        y = y + dy
+      end do yloop
+    case (1)
+      u = real(vec(ix))
+      v = real(vec(nup+ix))
+      write(u_out,"(5(1f9.4,1x))") t,x,y,u,v
+    end select
+    x = x + dx
+  end do xloop
+  write(stdout,*) 'u est compris entre'
+  write(stdout,*) umin,umax
+  write(stdout,*) 'v est compris entre'
+  write(stdout,*) vmin,vmax
+end subroutine out
+
+end module mod_out
 
 program cadhe2d
 !===========================================
@@ -454,17 +546,18 @@ program cadhe2d
   use prec
   use dimensions
   use mod_fcadhe, only: fcadhe
-  use mod_sys, only: sys
-  use mod_init, only: init
+  use mod_sys,    only: sys
+  use mod_init,   only: init
+  use mod_out,    only: out
   implicit none
 ! Data dictionary: declare local variable types & definitions
-  integer ( int32 ) :: k
-  integer ( int32 ) :: idid
-  integer ( int32 ), dimension(12) :: iwork
-  real ( dp ) :: t0,t1
+  integer ( int32 )                      :: k
+  integer ( int32 )                      :: idid
+  integer ( int32 ), dimension(12)       :: iwork
+  real ( dp )                            :: t0,t1
   real ( dp ), dimension(:), allocatable :: vec
-  real ( dp ) :: rtol,atol
-  real ( dp ) :: h
+  real ( dp )                            :: rtol,atol
+  real ( dp )                            :: h
   real ( dp ), dimension(:), allocatable :: work
 
 ! parameters
@@ -538,69 +631,6 @@ program cadhe2d
   deallocate(vec)
   deallocate(work)
 end program cadhe2d
-
-subroutine out (t,vec)
-!===========================================
-! OUT writes t,x,y,u(x,y),v(x,y) in the file with label u_out
-!===========================================
-  use prec
-  use dimensions
-  implicit none
-! Data dictionary: declare calling parameter types & definitions
-  real ( dp ), intent(in) :: t
-  real ( dp ), dimension(0:neqn-1), intent(in) :: vec
-! Data dictionary: declare local variable types & definitions
-  integer ( int32 ) :: ix               , iy
-  real ( dp )       :: x = 0.0_dp       , y = 0.0_dp
-  real ( dp )       :: u                , v
-  real ( dp )       :: umin = 1000.0_dp , vmin = 1000.0_dp
-  real ( dp )       :: umax = 0.0_dp    , vmax = 0.0_dp
-
-  xloop: do ix = 0,nip+1
-    select case (ndim)
-    case (2)
-      yloop: do iy = 0,nip+1
-        u = real(vec(iy*(nip+2)+ix))
-        v = real(vec(nup+iy*(nip+2)+ix))
-        write(u_out,"(5(1f9.4,1x))") t,x,y,u,v
-        if (u < umin) then
-          umin = u
-        end if
-        if (u > umax) then
-          umax = u
-        end if
-        if (v < vmin) then
-          vmin = v
-        end if
-        if (v > vmax) then
-          vmax = v
-        end if
-        if (u < - 1.0e-3_dp) then
-          write(stdout,*) 'Attention'
-          write(stdout,*) x,y
-          write(stdout,*) 'est un endroit ou u est negatif et vaut'
-          write(stdout,*) u
-        end if
-        if (v < - 1.0e-3_dp) then
-          write(stdout,*) 'Attention'
-          write(stdout,*) x,y
-          write(stdout,*) 'est un endroit ou v est negatif et vaut'
-          write(stdout,*) v
-        end if
-        y = y + dy
-      end do yloop
-    case (1)
-      u = real(vec(ix))
-      v = real(vec(nup+ix))
-      write(u_out,"(5(1f9.4,1x))") t,x,y,u,v
-    end select
-    x = x + dx
-  end do xloop
-  write(stdout,*) 'u est compris entre'
-  write(stdout,*) umin,umax
-  write(stdout,*) 'v est compris entre'
-  write(stdout,*) vmin,vmax
-end subroutine out
 
 function radius ( )
 !===========================================
