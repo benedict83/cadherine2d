@@ -20,7 +20,7 @@ module dimensions
 !===========================================
   use prec
   implicit none
-  integer ( int32 ), parameter :: nip = 199            ! Number of interior points
+  integer ( int32 ), parameter :: nip = 99            ! Number of interior points
   integer ( int32 ) :: nup                            ! Number of unknown points
   integer ( int32 ) :: neqn                           ! Number of equations
   character(6)      :: nom_fichier
@@ -30,7 +30,7 @@ module dimensions
   real ( dp )       :: xmin,xmax
   real ( dp )       :: ymin,ymax
   real ( dp )       :: tbeg,tend
-  real ( dp )       :: rho,d1,d2,eps
+  real ( dp )       :: rho,d1,d2,integrale,eps
   real ( dp )       :: a0,a1
   real ( dp )       :: sigma
   real ( dp )       :: h1,h2,x0,y0,l
@@ -66,7 +66,7 @@ subroutine param ( )
     read (u_param,*,iostat=ierror)
     read (u_param,*,iostat=ierror)
     read (u_param,*,iostat=ierror)
-    read (u_param,*,iostat=ierror) rho,d1,d2,eps
+    read (u_param,*,iostat=ierror) rho,d1,d2,integrale,eps
     read (u_param,*,iostat=ierror)
     read (u_param,*,iostat=ierror)
     read (u_param,*,iostat=ierror) sigma
@@ -117,9 +117,11 @@ function phi (x,y)
     module = abs(x)
   end select
 
-  k1  = (exp(-(module/d1)**2)) / d1
-  k2  = (exp(-(module/d2)**2)) / d2
-  phi = (k1 - k2)            / 1.143851564_dp
+!!  k1  = (exp(-(module/d1)**2)) / d1
+!!  k2  = (exp(-(module/d2)**2)) / d2
+  k1  = (exp(-(module/d1)**2))
+  k2  = 2.0_dp * (exp(-(module/d2)**2))
+  phi = (k1 - k2)
 
 !!  write(stdout,*) module,phi
 end function phi
@@ -246,9 +248,6 @@ subroutine fcadhe (n,t,vec,dvec)
   real ( dp ) :: ui,vi
   real ( dp ) :: x,y,termeconvol
   real ( dp ) :: reacplus,reacmoins,reac
-!!  real ( dp ) :: sert_a_eviter_un_warning
-
-!!  sert_a_eviter_un_warning = t
 
   bigloop: do i = 0, nup-1
 ! left neighbour
@@ -284,24 +283,24 @@ subroutine fcadhe (n,t,vec,dvec)
     vi=vec(nup+i)
     select case (ndim)
     case (2)
-      dvec(i)=sigma*oodx2*(uleft+uright+ulow+uup-4.0_dp*ui)
-      dvec(nup+i)=0.0_dp
+      dvec(i)     = sigma*oodx2*(uleft+uright+ulow+uup-4.0_dp*ui)
+      dvec(nup+i) = 0.0_dp
     case (1)
-      dvec(i)=sigma*oodx2*(uleft+uright-2.0_dp*ui)
-      dvec(nup+i)=0.0_dp
+      dvec(i)     = sigma*oodx2*(uleft+uright-2.0_dp*ui)
+      dvec(nup+i) = 0.0_dp
     end select
 ! appel a convol
     ix = mod(i,nip+2) ! ces 4 lignes peuvent etre changees
     iy = i/(nip+2)    ! ces 4 lignes peuvent etre changees
-    x = ix*dx         ! ces 4 lignes peuvent etre changees
-    y = iy*dy         ! ces 4 lignes peuvent etre changees
-    termeconvol=convol(x,y,vec)
+    x  = ix*dx        ! ces 4 lignes peuvent etre changees
+    y  = iy*dy        ! ces 4 lignes peuvent etre changees
+    termeconvol = convol(x,y,vec)/integrale
 ! reaction 
-    reacplus = ui * (rho-vi) * (0.5_dp - termeconvol)
-    reacmoins = -eps * vi * (0.5_dp + termeconvol)
-    reac = reacplus + reacmoins
+    reacplus  =    ui * (rho-vi) * (0.5_dp - termeconvol)
+    reacmoins = - eps * vi       * (0.5_dp + termeconvol)
+    reac      = reacplus + reacmoins
 
-    dvec(i) = dvec(i) - reac
+    dvec(i)     = dvec(i)     - reac
     dvec(nup+i) = dvec(nup+i) + reac
 !!  write(stdout,*) reac,dvec(i),dvec(nup+i)
   end do bigloop
@@ -468,19 +467,22 @@ subroutine out (t,vec)
   real ( dp ), dimension(0:neqn-1), intent(in) :: vec
 ! Data dictionary: declare local variable types & definitions
   integer ( int32 ) :: ix               , iy
+  integer ( int32 ) :: i
   real ( dp )       :: x = 0.0_dp       , y = 0.0_dp
   real ( dp )       :: u                , v
   real ( dp )       :: umin = 1000.0_dp , vmin = 1000.0_dp
   real ( dp )       :: umax = 0.0_dp    , vmax = 0.0_dp
 
-  x = 0.0_dp ! necessaire mais je ne comprends pas encore bien pourquoi
-  y = 0.0_dp ! necessaire mais je ne comprends pas encore bien pourquoi
+  x = 0.0_dp     ! necessaire mais je ne comprends pas encore bien pourquoi
   xloop: do ix = 0,nip+1
+    i = ix
+    y = 0.0_dp   ! necessaire et la je comprends pourquoi
     select case (ndim)
     case (2)
       yloop: do iy = 0,nip+1
-        u = real(vec(iy*(nip+2)+ix))
-        v = real(vec(nup+iy*(nip+2)+ix))
+!!        i = iy*(nip+2)+ix
+        u = real(vec(i))
+        v = real(vec(nup+i))
         write(u_out,"(5(1f9.4,1x))") t,x,y,u,v
         if (u < umin) then
           umin = u
@@ -507,10 +509,11 @@ subroutine out (t,vec)
           write(stdout,*) v
         end if
         y = y + dy
+        i = i + nip + 2
       end do yloop
     case (1)
-      u = real(vec(ix))
-      v = real(vec(nup+ix))
+      u = real(vec(i))
+      v = real(vec(nup+i))
       write(u_out,"(5(1f9.4,1x))") t,x,y,u,v
     end select
     x = x + dx
