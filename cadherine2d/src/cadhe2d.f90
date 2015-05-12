@@ -20,7 +20,7 @@ module dimensions
 !===========================================
   use prec
   implicit none
-  integer ( int32 ), parameter :: nip = 19            ! Number of interior points
+  integer ( int32 ), parameter :: nip = 199            ! Number of interior points
   integer ( int32 ) :: nup                            ! Number of unknown points
   integer ( int32 ) :: neqn                           ! Number of equations
   character(6)      :: nom_fichier
@@ -30,7 +30,7 @@ module dimensions
   real ( dp )       :: xmin,xmax
   real ( dp )       :: ymin,ymax
   real ( dp )       :: tbeg,tend
-  real ( dp )       :: rho,b1,d1,eps
+  real ( dp )       :: rho,d1,d2,eps
   real ( dp )       :: a0,a1
   real ( dp )       :: sigma
   real ( dp )       :: h1,h2,x0,y0,l
@@ -66,7 +66,7 @@ subroutine param ( )
     read (u_param,*,iostat=ierror)
     read (u_param,*,iostat=ierror)
     read (u_param,*,iostat=ierror)
-    read (u_param,*,iostat=ierror) rho,b1,d1,eps
+    read (u_param,*,iostat=ierror) rho,d1,d2,eps
     read (u_param,*,iostat=ierror)
     read (u_param,*,iostat=ierror)
     read (u_param,*,iostat=ierror) sigma
@@ -108,6 +108,7 @@ function phi (x,y)
   real ( dp ) :: phi
 ! Data dictionary: declare local variable types & definitions
   real ( dp ) :: module
+  real ( dp ) :: k1,k2
 
   select case (ndim)
   case (2)
@@ -116,7 +117,9 @@ function phi (x,y)
     module = abs(x)
   end select
 
-  phi = - b1 * exp(-(module/d1)**2) + d1 * exp(-(module/b1)**2)
+  k1  = (exp(-(module/d1)**2)) / d1
+  k2  = (exp(-(module/d2)**2)) / d2
+  phi = (k1 - k2)            / 1.143851564_dp
 
 !!  write(stdout,*) module,phi
 end function phi
@@ -300,7 +303,7 @@ subroutine fcadhe (n,t,vec,dvec)
 
     dvec(i) = dvec(i) - reac
     dvec(nup+i) = dvec(nup+i) + reac
-  write(stdout,*) reac,dvec(i),dvec(nup+i)
+!!  write(stdout,*) reac,dvec(i),dvec(nup+i)
   end do bigloop
 end subroutine fcadhe
 

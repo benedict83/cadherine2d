@@ -30,7 +30,7 @@ exemple:
 ## additional object files on which the executable depends
 ## I added $(OBJECTS) for cadhe2d
 %: $(OBJECTS) %.o
-	$(FC) $(FCFLAGS) $(LDFLAGS) $(OPT) $^ -o $@
+	$(FC) $(FCFLAGS) $(LDFLAGS) $(OPT) $^ -o ../exe/$@
 ## General rule for building prog.o from prog.f90
 ## $< is used in order to list only the first prerequisite (the source file)
 ## and not the additional prerequisites such as module or include files
