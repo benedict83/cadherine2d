@@ -20,9 +20,11 @@ module dimensions
 !===========================================
   use prec
   implicit none
-  integer ( int32 ), parameter :: nip = 99            ! Number of interior points
-  integer ( int32 ) :: nup                            ! Number of unknown points
+  integer ( int32 ), parameter :: nip = 199            ! Number of interior points
+  integer ( int32 ) :: nup1d                          ! Number of unknown points in 1d
+  integer ( int32 ) :: nuptotal                       ! Number of total unknown points
   integer ( int32 ) :: neqn                           ! Number of equations
+  character(3)      :: bc
   character(6)      :: nom_fichier
   character(12)     :: nom_fichier_param
   character(10)     :: nom_fichier_out
@@ -30,18 +32,16 @@ module dimensions
   real ( dp )       :: xmin,xmax
   real ( dp )       :: ymin,ymax
   real ( dp )       :: tbeg,tend
-  real ( dp )       :: rho,d1,d2,integrale,eps
-  real ( dp )       :: a0,a1
-  real ( dp )       :: sigma
+  real ( dp )       :: rho,d1,d2,integrale,eps1
+  real ( dp )       :: sigma,eps2
   real ( dp )       :: h1,h2,x0,y0,l
   real ( dp )       :: dx,dy,dt
-  real ( dp )       :: oodx2
+  real ( dp )       :: oodx2,soodx2,e2soodx2
   integer ( int32 ) :: ndim
   integer ( int32 ) :: ns
   integer ( int32 ) :: iinit
 
 contains
-
 subroutine param ( )
 !===========================================
 ! PARAM reads parameters from a data file
@@ -62,17 +62,20 @@ subroutine param ( )
     read (u_param,*,iostat=ierror)
     read (u_param,*,iostat=ierror) ndim,xmin,xmax,ymin,ymax
     read (u_param,*,iostat=ierror)
-    read (u_param,*,iostat=ierror) tbeg,tend,ns
+    read (u_param,*,iostat=ierror) ns,tbeg,tend
     read (u_param,*,iostat=ierror)
     read (u_param,*,iostat=ierror)
     read (u_param,*,iostat=ierror)
-    read (u_param,*,iostat=ierror) rho,d1,d2,integrale,eps
+    read (u_param,*,iostat=ierror) rho,d1,d2,integrale,eps1
     read (u_param,*,iostat=ierror)
     read (u_param,*,iostat=ierror)
-    read (u_param,*,iostat=ierror) sigma
+    read (u_param,*,iostat=ierror) sigma,eps2
     read (u_param,*,iostat=ierror)
     read (u_param,*,iostat=ierror)
     read (u_param,*,iostat=ierror) iinit,h1,h2,x0,y0,l
+    read (u_param,*,iostat=ierror)
+    read (u_param,*,iostat=ierror)
+    read (u_param,*,iostat=ierror) bc
     close (u_param)
   end if
 end subroutine param
@@ -80,8 +83,15 @@ end subroutine param
 subroutine calc_neqn ( )
   implicit none
 
-  nup = (nip+2)**ndim
-  neqn = 2*nup
+  select case (bc)
+  case ("per")
+    nup1d = nip+1 ! if periodic BC, then nip+1 unknown points
+  case ("neu")
+    nup1d = nip+2 ! if Neumann  BC, then nip+2 unknown points
+  case default
+  end select
+  nuptotal = nup1d**ndim
+  neqn = 2*nuptotal
 end subroutine calc_neqn
 
 end module dimensions
@@ -95,7 +105,6 @@ module mod_phi
   public :: phi
 
 contains
-
 function phi (x,y)
 !===========================================
 ! PHI computes the kernel phi
@@ -111,19 +120,26 @@ function phi (x,y)
   real ( dp ) :: k1,k2
 
   select case (ndim)
-  case (2)
-    module = (x**2+y**2)**(0.5_dp)
   case (1)
     module = abs(x)
+  case (2)
+    module = (x**2+y**2)**(0.5_dp)
+  case default
   end select
 
-!!  k1  = (exp(-(module/d1)**2)) / d1
-!!  k2  = (exp(-(module/d2)**2)) / d2
-  k1  = (exp(-(module/d1)**2))
-  k2  = 2.0_dp * (exp(-(module/d2)**2))
-  phi = (k1 - k2)
+! case gaussienne
+!!  k1  = exp(-(module/d1)**2)
+!!  k2  = 2.0_dp * (exp(-(module/d2)**2))
+!!  phi = (k1 - k2) / integrale
+! case creneau
+  if (module > d1) then
+    phi = 0.0_dp
+  else if (module > d2) then
+    phi = 0.25_dp/d2   ! Il faut que l'integrale vaille  1/4 (soit  0.25) sur [d2,d1]
+  else
+    phi = - 0.25_dp/d2 ! Il faut que l'integrale vaille -1/4 (soit -0.25) sur [0,d2]
+  end if
 
-!!  write(stdout,*) module,phi
 end function phi
 
 end module mod_phi
@@ -137,7 +153,6 @@ module mod_convol
   public :: convol
 
 contains
-
 function convol (x,y,vec)
 !===========================================
 ! CONVOL computes the convolution term
@@ -156,61 +171,68 @@ function convol (x,y,vec)
   real ( dp ) :: termephi
 
   select case (ndim)
+  case (1)
+    position_x = x
+    position_y = 0.0_dp ! peu importe
+    termephi = phi (position_x,position_y)
+    convol = 0.5_dp * vec(nuptotal) * termephi * dx
+    xloop_1d: do ix = 1, nip
+      position_x = position_x-dx ! position_x = x - ix*dx
+      termephi = phi (position_x,position_y)
+      convol = convol + vec(nuptotal+ix) * termephi * dx
+    end do xloop_1d
+    position_x = position_x-dx ! position_x = x - (nip+1)*dx
+    termephi = phi (position_x,position_y)
+    select case (bc)
+    case ("per")
+      convol = convol + 0.5_dp * vec(nuptotal) * termephi * dx
+    case ("neu")
+      convol = convol + 0.5_dp * vec(nuptotal+(nip+1)) * termephi * dx
+    case default
+    end select
   case (2)
 ! bord gauche i.e. {0}*[0,1]
     position_x = x
     position_y = y
     termephi = phi (position_x,position_y)
-    convol = 0.25_dp * vec(nup) * termephi * dx * dy
+    convol = 0.25_dp * vec(nuptotal) * termephi * dx * dy
     yloop_gauche: do iy = 1, nip
-      position_y = position_y-dy
+      position_y = position_y-dy ! position_y = y - iy*dy
       termephi = phi (position_x,position_y)
-      convol = convol + 0.5_dp * vec(nup+iy*(nip+2)) * termephi * dx * dy
+      convol = convol + 0.5_dp * vec(nuptotal+iy*(nip+2)) * termephi * dx * dy
     end do yloop_gauche
-    position_y = position_y-dy
+    position_y = position_y-dy ! position_y = y - (nip+1)*dy
     termephi = phi (position_x,position_y)
-    convol = convol + 0.25_dp * vec(nup+(nip+1)*(nip+2)) * termephi * dx * dy
+    convol = convol + 0.25_dp * vec(nuptotal+(nip+1)*(nip+2)) * termephi * dx * dy
 ! interieur i.e. ]0,1[*[0,1]
     xloop_2d: do ix = 1, nip
-      position_x = position_x-dx
+      position_x = position_x-dx ! position_x = x - ix*dx
       position_y = y
       termephi = phi (position_x,position_y)
-      convol = convol + 0.5_dp * vec(nup+ix) * termephi * dx * dy
+      convol = convol + 0.5_dp * vec(nuptotal+ix) * termephi * dx * dy
       yloop_interieur: do iy = 1, nip
-        position_y = position_y-dy
+        position_y = position_y-dy ! position_y = y - iy*dy
         termephi = phi (position_x,position_y)
-        convol = convol + vec(nup+iy*(nip+2)+ix) * termephi * dx * dy
+        convol = convol + vec(nuptotal+iy*(nip+2)+ix) * termephi * dx * dy
       end do yloop_interieur
-      position_y = position_y-dy
+      position_y = position_y-dy ! position_y = y - (nip+1)*dy
       termephi = phi (position_x,position_y)
-      convol = convol + 0.5_dp * vec(nup+(nip+1)*(nip+2)+ix) * termephi * dx * dy
+      convol = convol + 0.5_dp * vec(nuptotal+(nip+1)*(nip+2)+ix) * termephi * dx * dy
     end do xloop_2d
 ! bord droit i.e. {1}*[0,1]
-    position_x = position_x-dx
+    position_x = position_x-dx ! position_x = x - (nip+1)*dx
     position_y = y
     termephi = phi (position_x,position_y)
-    convol = convol + 0.25_dp * vec(nup+nip+1) * termephi * dx * dy
+    convol = convol + 0.25_dp * vec(nuptotal+nip+1) * termephi * dx * dy
     yloop_droit: do iy = 1, nip
-      position_y = position_y-dy
+      position_y = position_y-dy ! position_y = y - iy*dy
       termephi = phi (position_x,position_y)
-      convol = convol + 0.5_dp * vec(nup+iy*(nip+2)+nip+1) * termephi * dx * dy
+      convol = convol + 0.5_dp * vec(nuptotal+iy*(nip+2)+nip+1) * termephi * dx * dy
     end do yloop_droit
-    position_y = position_y-dy
+    position_y = position_y-dy ! position_y = y - (nip+1)*dy
     termephi = phi (position_x,position_y)
-    convol = convol + 0.25_dp * vec(nup+(nip+1)*(nip+2)+nip+1) * termephi * dx * dy
-  case (1)
-    position_x = x
-    position_y = 0.0_dp ! peu importe
-    termephi = phi (position_x,position_y)
-    convol = 0.5_dp * vec(nup) * termephi * dx
-    xloop_1d: do ix = 1, nip
-      position_x = position_x-dx
-      termephi = phi (position_x,position_y)
-      convol = convol + vec(nup+ix) * termephi * dx
-    end do xloop_1d
-    position_x = position_x-dx
-    termephi = phi (position_x,position_y)
-    convol = convol + 0.5_dp * vec(nup+(nip+1)) * termephi * dx
+    convol = convol + 0.25_dp * vec(nuptotal+(nip+1)*(nip+2)+nip+1) * termephi * dx * dy
+  case default
   end select
 
 end function convol
@@ -226,7 +248,6 @@ module mod_fcadhe
   public :: fcadhe
 
 contains
-
 subroutine fcadhe (n,t,vec,dvec)
 !===========================================
 ! FCADHE compute the value of
@@ -245,64 +266,95 @@ subroutine fcadhe (n,t,vec,dvec)
   integer ( int32 ) :: i,ix,iy
   real ( dp ) :: uleft,uright
   real ( dp ) :: ulow,uup
+  real ( dp ) :: vleft,vright
+  real ( dp ) :: vlow,vup
   real ( dp ) :: ui,vi
-  real ( dp ) :: x,y,termeconvol
-  real ( dp ) :: reacplus,reacmoins,reac
+  real ( dp ) :: x,y
+  real ( dp ) :: termeconvol
+  real ( dp ) :: reacplus,reacmoins
+  real ( dp ) :: termereac
 
-  bigloop: do i = 0, nup-1
+  bigloop: do i = 0, nuptotal-1
 ! left neighbour
-    if(mod(i,nip+2) == 0)then
-      uleft=vec(i+1)
+    if(mod(i,nup1d) == 0)then
+      select case (bc)
+      case ("per") ! periodic boundary condition
+        uleft = vec(nip+i)
+        vleft = vec(nuptotal+nip+i)
+      case ("neu") ! Neumann homogeneous boundary condition
+        uleft = vec(i+1)
+        vleft = vec(nuptotal+i+1)
+      case default
+      end select
     else
-     uleft=vec(i-1)
+      uleft = vec(i-1)
+      vleft = vec(nuptotal+i-1)
     end if
 ! right neighbour
-    if(mod(i,nip+2) == nip+1)then
-      uright=vec(i-1)
+    if(mod(i,nup1d) == nup1d-1)then
+      select case (bc)
+      case ("per") ! periodic boundary condition
+        uright = vec(-nip+i)
+        vright = vec(nuptotal-nip+i)
+      case ("neu") ! Neumann homogeneous boundary condition
+        uright = vec(i-1)
+        vright = vec(nuptotal+i-1)
+      case default
+      end select
     else
-      uright=vec(i+1)
+      uright = vec(i+1)
+      vright = vec(nuptotal+i+1)
     end if
     select case (ndim)
+    case (1)
+! no lower and upper neighbours in one dimension -> nothing to do
     case (2)
-  ! lower neighbour
+! lower neighbour
       if(i <= nip+1)then
-        ulow=vec(i+nip+2)
+        ulow = vec(i+nip+2)
+        vlow = vec(nuptotal+i+nip+2)
       else
-        ulow=vec(i-nip-2)
+        ulow = vec(i-nip-2)
+        vlow = vec(nuptotal+i-nip-2)
       end if
-  ! upper neighbour
+! upper neighbour
       if(i >= (nip+1)*(nip+2))then
-        uup=vec(i-nip-2)
+        uup = vec(i-nip-2)
+        vup = vec(nuptotal+i-nip-2)
       else
-        uup=vec(i+nip+2)
+        uup = vec(i+nip+2)
+        vup = vec(nuptotal+i+nip+2)
       end if
-    case (1)
+    case default
     end select
-! the derivative
+! calcul de la derivee en trois etapes
+! 1. partie diffusive
     ui=vec(i)
-    vi=vec(nup+i)
+    vi=vec(nuptotal+i)
     select case (ndim)
-    case (2)
-      dvec(i)     = sigma*oodx2*(uleft+uright+ulow+uup-4.0_dp*ui)
-      dvec(nup+i) = 0.0_dp
     case (1)
-      dvec(i)     = sigma*oodx2*(uleft+uright-2.0_dp*ui)
-      dvec(nup+i) = 0.0_dp
+      dvec(i)          = soodx2   * (uleft + uright - 2.0_dp * ui)
+      dvec(nuptotal+i) = 0.0_dp
+!!      dvec(nuptotal+i) = e2soodx2 * (vleft + vright - 2.0_dp * vi)
+    case (2)
+      dvec(i)          = soodx2   * (uleft + uright + ulow + uup - 4.0_dp * ui)
+      dvec(nuptotal+i) = e2soodx2 * (vleft + vright + vlow + vup - 4.0_dp * vi)
+    case default
     end select
-! appel a convol
+! 2. partie reactive
+    ! calcul du terme de convolution
     ix = mod(i,nip+2) ! ces 4 lignes peuvent etre changees
     iy = i/(nip+2)    ! ces 4 lignes peuvent etre changees
     x  = ix*dx        ! ces 4 lignes peuvent etre changees
     y  = iy*dy        ! ces 4 lignes peuvent etre changees
-    termeconvol = convol(x,y,vec)/integrale
-! reaction 
-    reacplus  =    ui * (rho-vi) * (0.5_dp - termeconvol)
-    reacmoins = - eps * vi       * (0.5_dp + termeconvol)
-    reac      = reacplus + reacmoins
-
-    dvec(i)     = dvec(i)     - reac
-    dvec(nup+i) = dvec(nup+i) + reac
-!!  write(stdout,*) reac,dvec(i),dvec(nup+i)
+    termeconvol = convol(x,y,vec)
+    ! calcul du terme de reaction 
+    reacplus  =     ui * (rho-vi) * (0.5_dp - 1.0_dp * termeconvol)
+    reacmoins = - eps1 * vi       * (0.5_dp + 1.25_dp * termeconvol)
+    termereac = reacplus + reacmoins
+! 3. ajout de la partie diffusive et de la partie reactive
+    dvec(i)          = dvec(i)          - termereac
+    dvec(nuptotal+i) = dvec(nuptotal+i) + termereac
   end do bigloop
 end subroutine fcadhe
 
@@ -317,7 +369,6 @@ module mod_sys
   public :: sys
 
 contains
-
 subroutine sys ( )
 !===========================================
 ! SYS makes the systematic computations
@@ -336,6 +387,10 @@ subroutine sys ( )
   dy = (ymax-ymin)/(nip+1)
 ! compute useful quantities
   oodx2 = 1.0_dp/(dx*dx)
+  soodx2 = sigma * oodx2
+  e2soodx2 = eps2 * soodx2
+  write(stdout,*) ''
+  write(stdout,*) soodx2, e2soodx2
 
 end subroutine sys
 
@@ -350,7 +405,6 @@ module mod_init_random_seed
   public :: init_random_seed
 
 contains
-
 subroutine init_random_seed ( )
 !===========================================
 ! INIT_RANDOM_SEED initializes a pseudo-random number sequence
@@ -380,7 +434,6 @@ module mod_init
   public :: init
 
 contains
-
 subroutine init (vec)
 !===========================================
 ! INIT computes the initial condition
@@ -401,7 +454,7 @@ subroutine init (vec)
   select case (iinit)
   case (0) ! read initial condition from file
     open(newunit=u,file="fort.10",access="sequential",form ="formatted",status="old")
-    readloop: do i=0,nup-1
+    readloop: do i=0,nuptotal-1
       read(u,*) x,vec(i)
     end do readloop
     close(u)
@@ -411,35 +464,46 @@ subroutine init (vec)
   case (2) ! petite bosse  pour v autour de (x0,y0), v nulle ailleurs
     xlaouonest = 0.0_dp
     ylaouonest = 0.0_dp
-    bigloop2: do i=0,nup-1
+    bigloop2: do i=0,nuptotal-1
       if (xlaouonest > xmax) then
         xlaouonest = xlaouonest - (xmax - xmin)
         ylaouonest = ylaouonest + dy
       end if
       gauss = h2 * exp(-((xlaouonest-x0)**2+(ylaouonest-y0)**2)/(2.0_dp*l))
       vec(i) = 1.0_dp - gauss
-      vec(nup+i) = gauss
+      vec(nuptotal+i) = gauss
 !!      write(stdout,*) ix,iy,xlaouonest,ylaouonest,gauss
       xlaouonest = xlaouonest + dx
     end do bigloop2
 
   case (3) ! condition initiale aleatoire
     call init_random_seed ( )
-    bigloop3: do i=0,nup-1
+    bigloop3: do i=0,nuptotal-1
       call random_number (r)
       vec(i) = 1-h2*r
-      vec(nup+i) = h2*r
+      vec(nuptotal+i) = h2*r
     end do bigloop3
 
   case (4) ! condition initiale aleatoire en une dimension
     call init_random_seed ( )
-    xloop: do ix=0,nip+1
-      call random_number (r)
-      yloop: do iy=0,nip+1
-        vec(iy*(nip+2)+ix) = 1-h2*r
-        vec(nup+iy*(nip+2)+ix) = h2*r
-      end do yloop
-    end do xloop
+    select case (ndim)
+    case (1)
+      xloop: do ix=0,nup1d-1
+        call random_number (r)
+          vec(ix) = 1-h2*r
+          vec(nuptotal+ix) = h2*r
+      end do xloop
+    case (2)
+      xloop_2d: do ix=0,nup1d-1
+        call random_number (r)
+        yloop: do iy=0,nup1d-1
+          vec(iy*(nip+2)+ix) = 1-h2*r
+          vec(nuptotal+iy*(nip+2)+ix) = h2*r
+        end do yloop
+      end do xloop_2d
+    case default
+    end select
+  case default
   end select
 end subroutine init
 
@@ -454,7 +518,6 @@ module mod_out
   public :: out
 
 contains
-
 subroutine out (t,vec)
 !===========================================
 ! OUT writes t,x,y,u(x,y),v(x,y) in the file with label u_out
@@ -474,16 +537,20 @@ subroutine out (t,vec)
   real ( dp )       :: umax = 0.0_dp    , vmax = 0.0_dp
 
   x = 0.0_dp     ! necessaire mais je ne comprends pas encore bien pourquoi
-  xloop: do ix = 0,nip+1
+  xloop: do ix = 0,nup1d-1
     i = ix
     y = 0.0_dp   ! necessaire et la je comprends pourquoi
     select case (ndim)
+    case (1)
+      u = real(vec(i))
+      v = real(vec(nuptotal+i))
+      write(u_out,"(5(1f10.4,1x))") t,x,y,u,v
     case (2)
-      yloop: do iy = 0,nip+1
+      yloop: do iy = 0,nup1d-1
 !!        i = iy*(nip+2)+ix
         u = real(vec(i))
-        v = real(vec(nup+i))
-        write(u_out,"(5(1f9.4,1x))") t,x,y,u,v
+        v = real(vec(nuptotal+i))
+        write(u_out,"(5(1f10.4,1x))") t,x,y,u,v
         if (u < umin) then
           umin = u
         end if
@@ -508,20 +575,15 @@ subroutine out (t,vec)
           write(stdout,*) 'est un endroit ou v est negatif et vaut'
           write(stdout,*) v
         end if
-        y = y + dy
+        y = y + dy ! y = (iy+1) * dy
         i = i + nip + 2
       end do yloop
-    case (1)
-      u = real(vec(i))
-      v = real(vec(nup+i))
-      write(u_out,"(5(1f9.4,1x))") t,x,y,u,v
+    case default
     end select
-    x = x + dx
+    x = x + dx ! x = (ix+1) * dx
   end do xloop
-  write(stdout,*) 'u est compris entre'
-  write(stdout,*) umin,umax
-  write(stdout,*) 'v est compris entre'
-  write(stdout,*) vmin,vmax
+  write(stdout,"(1x,a,f10.4,a,f10.4)") 'u est compris entre',umin ,' et ', umax
+  write(stdout,"(1x,a,f10.4,a,f10.4)") 'v est compris entre',vmin ,' et ', vmax
 end subroutine out
 
 end module mod_out
@@ -604,14 +666,14 @@ program cadhe2d
     iwork(3)=0  ! Return and solution at t1
     iwork(4)=0  ! Atol and rtol are scalars
     write(stdout,*) ''
-    write(stdout,"(1x,a,f7.2,a,f7.2)") 'Integration du systeme de ',t0,' a ',t1
+    write(stdout,*) ''
+    write(stdout,"(1x,a,f10.4,a,f10.4)") 'Integration du systeme de ',t0,' a ',t1
     write(stdout,*) '...'
     call rock4 (neqn,t0,t1,h,vec,fcadhe,atol,rtol,work,iwork,idid)
 ! k-eme sortie
     write(stdout,*) '...'
-    write(stdout,"(1x,a,f7.2)") 'Fait, et maintenant le temps est ',t1
+    write(stdout,"(1x,a,f10.4)") 'Fait, et maintenant le temps est ',t1
 ! print statistics
-    write(stdout,*) ''
 !!    write(stdout,*) '--Solution is tabulated in file ',nom_fichier_out
 !!    write(stdout,*) 'The value of dt is',dt
 !!    write(stdout,*) 'The value of dx is',dx
@@ -651,5 +713,5 @@ function radius ( )
 ! Data dictionary: declare calling parameter types & definitions
   real ( dp ) :: radius
 
-  radius = 8.0_dp*nup*sigma + 2.0_dp
+  radius = 8.0_dp*nuptotal*sigma + 2.0_dp
 end function radius
