@@ -2,14 +2,14 @@ Data for running cadhe2d
 dimension (ndim) domaine (xmin)   (xmax)   (ymin)   (ymax)
            1             0.0      1.0      0.0      1.0
 nombre d'échantillons (ns) temps initial (tbeg), temps final (tend)
-                      90                 0.0                 90000.0
+                      60                 0.0                 600.0
 parametres terme reaction : r(u,v)=(1-convol)*u*(rho-v)-eps*convol*v
 k1  = exp(-(module/d1)**2)             ###  k2  = 2 * (exp(-(module/d2)**2)) ### phi = (k1 - k2)/integrale
 (rho) (d1)  (d2)   (integrale)  (eps1) ### il est important d'avoir d2 = d1 / 2
-1.0   0.05  0.025  0.045754062  1.0    ### valeur de l'integrale donnee par mathematica 10.0.2.0
+2.0   0.05  0.025  0.045754062  0.1    ### valeur de l'integrale donnee par mathematica 10.0.2.0
 parametres terme diffusion : sigma u_xx  eps2*sigma v_xx
 (sigma)     (eps2)
-0.0000001       0.0
+0.001       0.0
 condition initiale
 (iinit) valeurs gauche (h1) et droite (h2), positions centrales (x0) (y0) largeur (l)
 4                      999.0          0.1                       2.5  0.0          0.01
