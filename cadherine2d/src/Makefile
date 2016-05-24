@@ -12,7 +12,8 @@ FC = gfortran
 ##      -W        Error and Warning Options
 ## -O0 supprime toute optimisation
 FCFLAGS = -I/usr/include/fgsl -lfgsl
-LDFLAGS = -L/usr/lib -lgsl -lgslcblas
+##LDFLAGS = -L/usr/lib -lgsl -lgslcblas bug apres ubuntu 15.10 update
+LDFLAGS = -L/usr/lib
 OPT = -fPIC -fbacktrace -fcheck=all -fdiagnostics-color=auto -fmax-errors=1 -g -pedantic -Wall -Wextra -Wimplicit-interface
 
 ## ======================================================================
