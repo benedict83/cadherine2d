@@ -1,20 +1,26 @@
 #HOME = .
+
 FC = gfortran
+
+FCFLAGS = -I/usr/include/fgsl -lfgsl
+#LDFLAGS = -L/usr/lib -lgsl -lgslcblas bug apres ubuntu 15.10 update
+LDFLAGS = -L/usr/lib
 
 ## ======================================================================
 ## OPTIONS
 ## ======================================================================
-## -O2 est le niveau par defaut
-## utile pour le developpement :
-##      -f        Fortran Language Options
-##      -g 
-##      -pedantic Error and Warning Options
-##      -W        Error and Warning Options
-## -O0 supprime toute optimisation
-FCFLAGS = -I/usr/include/fgsl -lfgsl
-##LDFLAGS = -L/usr/lib -lgsl -lgslcblas bug apres ubuntu 15.10 update
-LDFLAGS = -L/usr/lib
-OPT = -fPIC -fbacktrace -fcheck=all -fdiagnostics-color=auto -fmax-errors=1 -g -pedantic -Wall -Wextra -Wimplicit-interface
+## -O3 the most optimization
+## -O2
+## -O1
+## -O0 no optimization
+## -Og optimize debugging experience
+## utiles pour le developpement :
+## -f        Fortran Language Options
+## -g 	     actually makes debugging possible by requesting the compiler to produce debugging information intended to be used by interactive debugger (GDB)
+## -pedantic Error and Warning Options
+## -W        Error and Warning Options
+OPT = -Og -fPIC -fbacktrace -fcheck=all -fdiagnostics-color=auto -fmax-errors=1 \
+      -g -pedantic -Wall -Wextra -Wimplicit-interface
 
 ## ======================================================================
 ## OBJECTS
