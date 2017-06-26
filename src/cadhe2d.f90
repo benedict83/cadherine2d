@@ -137,7 +137,7 @@ function phi (x, y)
   end if
 !!  end select
 end function phi
-function fg (h)
+function fg (v)
 !===========================================
 ! FG computes the functions F and G
 !===========================================
@@ -145,126 +145,12 @@ function fg (h)
   use dimensions
   implicit none
 ! Data dictionary: declare calling parameter types & definitions
-  real ( dp ), intent(in)   :: h
+  real ( dp ), intent(in)   :: v
   real ( dp ), dimension(2) :: fg
-!!  fg (1) = 1.0_dp - tanh( 4.0_dp * ( h - rho * 0.5_dp ) )
-!!  fg (2) = 1.0_dp
-!! ajout pour un modele sans convolution, ici on calcule fg (v) donc il faut imaginer que h=v
-  fg (1) = 0.5_dp + tanh( h )
-  fg (2) = 1.0_dp - tanh( 2.0_dp * h )
+  fg (1) = 0.5_dp + tanh( v )
+  fg (2) = 1.0_dp - tanh( 2.0_dp * v )
 end function fg
 end module mod_functions
-
-module mod_convol
-!===========================================
-! MODULE FOR CONVOL
-!===========================================
-  implicit none
-  private
-  public :: convol
-contains
-function convol (x, y, vec)
-!===========================================
-! CONVOL computes the convolution term
-!===========================================
-  use prec
-  use dimensions
-  use mod_functions
-  implicit none
-! Data dictionary: declare calling parameter types & definitions
-  real      ( dp ),                      intent(in) :: x, y
-  real      ( dp ), dimension(0:neqn-1), intent(in) :: vec
-  real      ( dp )                                  :: convol
-! Data dictionary: declare local variable types & definitions
-  integer   ( int32 ) :: ix, iy
-  real      ( dp )    :: position_x, position_y
-  real      ( dp )    :: termephi
-
-  select case (ndim)
-  case (1)
-    position_x = x
-    position_y = 0.0_dp ! peu importe
-    termephi   = phi (position_x, position_y)
-    convol     = 0.5_dp * vec(nuptotal) * termephi * dx
-    xloop_1d: do ix = 1, nip
-      position_x = position_x-dx ! position_x = x - ix*dx
-      termephi   = phi (position_x, position_y)
-      convol     = convol + vec(nuptotal+ix) * termephi * dx
-    end do xloop_1d
-    position_x = position_x-dx ! position_x = x - (nip+1)*dx
-    termephi   = phi (position_x, position_y)
-    select case (bc)
-    case ("per")
-      convol = convol + 0.5_dp * vec(nuptotal) * termephi * dx
-    case ("neu")
-      convol = convol + 0.5_dp * vec(nuptotal+(nip+1)) * termephi * dx
-    case default
-    end select
-  case (2)
-! bord gauche i.e. {0}*[0, 1]
-    position_x = x
-    position_y = y
-    termephi = phi (position_x, position_y)
-    convol   = 0.25_dp * vec(nuptotal) * termephi * dx * dy
-    yloop_gauche: do iy = 1, nip
-      position_y = position_y-dy ! position_y = y - iy*dy
-      termephi   = phi (position_x, position_y)
-      convol     = convol + 0.5_dp * vec(nuptotal+iy*nup1d) * termephi * dx * dy
-    end do yloop_gauche
-    position_y = position_y-dy ! position_y = y - (nip+1)*dy
-    termephi   = phi (position_x, position_y)
-    select case (bc)
-    case ("per")
-      convol = convol + 0.25_dp * vec(nuptotal) * termephi * dx * dy
-      convol = 2 * convol ! in case of periodic BC, we need to take two times the left slice
-    case ("neu")
-      convol = convol + 0.25_dp * vec(nuptotal+(nip+1)*nup1d) * termephi * dx * dy
-    case default
-    end select
-! interieur i.e. ]0, 1[*[0, 1]
-    xloop_2d: do ix = 1, nip
-      position_x = position_x-dx ! position_x = x - ix*dx
-      position_y = y
-      termephi   = phi (position_x, position_y)
-      convol     = convol + 0.5_dp * vec(nuptotal+ix) * termephi * dx * dy
-      yloop_interieur: do iy = 1, nip
-        position_y = position_y-dy ! position_y = y - iy*dy
-        termephi   = phi (position_x, position_y)
-        convol     = convol + vec(nuptotal+iy*nup1d+ix) * termephi * dx * dy
-      end do yloop_interieur
-      position_y = position_y-dy ! position_y = y - (nip+1)*dy
-      termephi   = phi (position_x, position_y)
-      select case (bc)
-      case ("per")
-        convol = convol + 0.5_dp * vec(nuptotal+ix) * termephi * dx * dy
-      case ("neu")
-        convol = convol + 0.5_dp * vec(nuptotal+(nip+1)*nup1d+ix) * termephi * dx * dy
-      case default
-      end select
-    end do xloop_2d
-! bord droit i.e. {1}*[0, 1]
-    select case (bc)
-    case ("per")
-    ! do nothing : the right slice was already integrated with the left one  
-    case ("neu")
-    position_x = position_x-dx ! position_x = x - (nip+1)*dx
-    position_y = y
-    termephi   = phi (position_x, position_y)
-    convol     = convol + 0.25_dp * vec(nuptotal+nip+1) * termephi * dx * dy
-    yloop_droit: do iy = 1, nip
-      position_y = position_y-dy ! position_y = y - iy*dy
-      termephi   = phi (position_x, position_y)
-      convol     = convol + 0.5_dp * vec(nuptotal+iy*nup1d+nip+1) * termephi * dx * dy
-    end do yloop_droit
-    position_y = position_y-dy ! position_y = y - (nip+1)*dy
-    termephi   = phi (position_x, position_y)
-    convol = convol + 0.25_dp * vec(nuptotal+(nip+1)*nup1d+nip+1) * termephi * dx * dy
-    case default
-    end select
-  case default
-  end select
-end function convol
-end module mod_convol
 
 module mod_fcadhe
 !===========================================
@@ -282,7 +168,6 @@ subroutine fcadhe (n, t, vec, dvec)
   use prec
   use dimensions
   use mod_functions
-  use mod_convol, only: convol
   implicit none
 ! Data dictionary: declare calling parameter types & definitions
   integer ( int32 ), intent(in) :: n     ! Moralement n == neqn
@@ -297,10 +182,6 @@ subroutine fcadhe (n, t, vec, dvec)
   real ( dp ) :: vlow, vup
   real ( dp ) :: ui, vi
   real ( dp ) :: x, y
-  real ( dp ) :: termeconvol
-  real ( dp ) :: h
-  real ( dp ), dimension (2) :: fixlib
-  real ( dp ) :: fix, lib
   real ( dp ) :: reacplus, reacmoins
   real ( dp ) :: termereac
 
@@ -389,19 +270,13 @@ subroutine fcadhe (n, t, vec, dvec)
     case default
     end select
 ! 2. partie reactive
-    ! calcul du terme de convolution
-    ix = mod(i, nup1d) ! ces 4 lignes peuvent etre changees
-    iy = i/(nup1d)     ! ces 4 lignes peuvent etre changees
-    x  = ix*dx         ! ces 4 lignes peuvent etre changees
-    y  = iy*dy         ! ces 4 lignes peuvent etre changees
-!!    termeconvol = convol (x, y, vec)
-!!    h           = termeconvol + rho * 0.5_dp
-    fixlib      = fg (vi)
-    fix         = fixlib (1)
-    lib         = fixlib (2)
+!!    ix = mod(i, nup1d) ! ces 4 lignes peuvent etre changees
+!!    iy = i/(nup1d)     ! ces 4 lignes peuvent etre changees
+!!    x  = ix*dx         ! ces 4 lignes peuvent etre changees
+!!    y  = iy*dy         ! ces 4 lignes peuvent etre changees
     ! calcul du terme de reaction 
-    reacplus  =     ui * (rho-vi) * fix
-    reacmoins = - eps1 * vi * lib
+    reacplus  =     ui * (rho-vi)
+    reacmoins = - eps1 * vi
     termereac = reacplus + reacmoins
 ! 3. ajout de la partie diffusive et de la partie reactive
     dvec (i)          = dvec (i)          - termereac
